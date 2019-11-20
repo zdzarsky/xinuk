@@ -4,7 +4,6 @@ import java.awt.Color
 import java.io.File
 
 import com.avsystem.commons._
-import com.avsystem.commons.misc.Opt
 import javax.imageio.ImageIO
 import pl.edu.agh.beexplore.config.BeexploreConfig
 import pl.edu.agh.beexplore.model._
@@ -17,11 +16,10 @@ import pl.edu.agh.xinuk.model._
 
 import scala.Array._
 import scala.collection.immutable.TreeSet
-import scala.math.signum
 import scala.util.Random
 import scala.util.control.Breaks._
 
-class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)], workerId: WorkerId)
+class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])
                               (implicit config: BeexploreConfig) extends MovesController {
 
   import Cell._
@@ -31,7 +29,6 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)], workerId: Worker
   private val beeUtils = new BeeUtils()
 
   override def initialGrid: (Grid, BeexploreMetrics) = {
-    println("[WORKER INIT] ", workerId)
     grid = Grid.empty(bufferZone, BeexploreCell(Cell.emptySignal, Vector.empty, Id.Start))
 
 
@@ -69,8 +66,8 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)], workerId: Worker
     else {
       //    coordinates are not absolute, now they're for each node
       //    to calculate absoluteCoords, probably will need sth like absoluteX = x + nodeId(horizontally) * gridSize
-      if (workerId.value == config.beeColonyWorkerId)
-        grid.cells(config.beeColonyCoordinateX)(config.beeColonyCoordinateY) = BeeColony.create(Vector.fill(config.beeNumber)(Bee.create()))
+      /* if (workerId.value == config.beeColonyWorkerId)
+         grid.cells(config.beeColonyCoordinateX)(config.beeColonyCoordinateY) = BeeColony.create(Vector.fill(config.beeNumber)(Bee.create()))*/
 
       for (i: Int <- 0 until config.flowerPatchNumber) {
         var x = random.nextInt(config.gridSize - 3) + 1
@@ -85,7 +82,7 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)], workerId: Worker
           y = random.nextInt(config.gridSize - 3) + 1
         }
 
-        val flowerPatchId = (workerId.value - 1) * config.flowerPatchNumber + i
+        val flowerPatchId = config.flowerPatchNumber + i
         grid.cells(x)(y) = BeexploreCell(Cell.emptySignal + config.flowerPatchSignalMultiplier, Vector.empty, Id(flowerPatchId))
 
         val flowerPatchSize = random.nextInt(config.flowerPatchSizeMax - config.flowerPatchSizeMin) + config.flowerPatchSizeMin
@@ -144,216 +141,76 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)], workerId: Worker
       case cell: BeexploreCell => cell.copy(bees = Vector.empty)
     }
 
-    def update(x: Int, y: Int)(op: BeexploreCell => BeexploreCell): Unit = {
-      def updated(cell: BeexploreCell): BeexploreCell = {
-        val afterOp = op(cell)
-        var flowerPatchAdjustment = 0
-        if (afterOp.flowerPatch.value != -1)
-          flowerPatchAdjustment = 1
-        val smellAdjustment = (config.beeInitialSignal * afterOp.bees.size) + (config.flowerPatchSignalMultiplier * flowerPatchAdjustment)
-        afterOp.copy(smell = afterOp.smell + smellAdjustment)
-      }
+    def adjustSmell(bees: Vector[Bee], flowerPatchValue: Int): Signal = (config.beeInitialSignal * bees.size) + (if (flowerPatchValue != -1)
+      config.flowerPatchSignalMultiplier else Signal(0))
 
+    def update[T](x: Int, y: Int)(updater: T => T): Unit = {
       newGrid.cells(x)(y) = newGrid.cells(x)(y) match {
-        case cell: BeexploreCell => updated(cell)
-        case cell: BeeColony => cell
-        case BufferCell(cell: BeexploreCell) => BufferCell(updated(cell))
-        case Obstacle => Obstacle
-      }
-    }
-
-    def updateColony(x: Int, y: Int)(op: BeeColony => BeeColony): Unit = {
-      def updatedColony(cell: BeeColony): BeeColony = {
-        val afterOp = op(cell)
-        afterOp.copy(smell = afterOp.smell)
-      }
-
-      newGrid.cells(x)(y) = newGrid.cells(x)(y) match {
-        case cell: BeexploreCell => cell
-        case cell: BeeColony => updatedColony(cell)
-        case BufferCell(cell) => BufferCell(cell)
+        case cell: BeexploreCell => updater(cell.asInstanceOf[T]).asInstanceOf[BeexploreCell]
+        case cell: BeeColony => updater(cell.asInstanceOf[T]).asInstanceOf[BeeColony]
+        case BufferCell(cell: BeexploreCell) => BufferCell(updater(cell.asInstanceOf[T]).asInstanceOf[BeexploreCell])
         case Obstacle => Obstacle
       }
     }
 
     def calculateCell(x: Int, y: Int): Unit = {
+      def calculateCurrentResultAndPendingMoves(previousResult: Iterator[Bee], pendingMoves: Map[(Int, Int), Stream[Bee]],
+                                                bee: Bee): (Iterator[Bee], Map[(Int, Int), Stream[Bee]]) = {
+        val action = moveBee(bee, x, y, pendingMoves)
+        //                only 1 move in moves iterator
+        val actionMoves = action.moves.map { case ((x, y), movingBee) =>
+          (x, y) -> (pendingMoves((x, y)) :+ movingBee)
+        }
+        val updatedPendingMoves = (actionMoves ++ pendingMoves.iterator.filter { case (key, _) =>
+          !actionMoves.exists { case (secondKey, _) => key == secondKey }
+        }).toMap
+        (previousResult ++ action.currentCellResult, updatedPendingMoves)
+      }
+
+      def calculateNewBeesAndMoves(bees: Vector[Bee]): (Iterator[Bee], Map[(Int, Int), Stream[Bee]]) = bees.foldLeft((Iterator[Bee](),
+        Map.empty[(Int, Int), Stream[Bee]].withDefaultValue(Stream.empty))) { case ((currentCellResult, pendingMoves), bee) =>
+        calculateCurrentResultAndPendingMoves(currentCellResult, pendingMoves, bee)
+      }
+
+      def updateGridForMoves(moves: BMap[(Int, Int), Stream[Bee]]): Unit = moves.foreach { case ((i, j), bees) =>
+        //            movesCount += bees.size
+        update[BeexploreCell](i, j) { cell =>
+          val newBees = cell.bees ++ bees
+          val smellAdjustment = adjustSmell(newBees, cell.flowerPatch.value)
+          cell.copy(smell = cell.smell + smellAdjustment, bees = newBees)
+        }
+        update[BeeColony](i, j)(cell => cell.copy(bees = cell.bees ++ bees))
+      }
 
       this.grid.cells(x)(y) match {
         case Obstacle =>
         case BufferCell(BeexploreCell(smell, _, _)) =>
-          update(x, y)(cell => cell.copy(smell = cell.smell + smell))
+          update[BeexploreCell](x, y)(cell => cell.copy(smell = (cell.smell + smell) + adjustSmell(cell.bees, cell.flowerPatch.value)))
         case BeeColony(_, _, bees, _, _, _, _) =>
-          val (newBees: Iterator[Bee], moves: BMap[(Int, Int), Stream[Bee]]) =
-            bees.foldLeft(
-              (
-                Iterator[Bee](),
-                MMap.empty[(Int, Int), Stream[Bee]].withDefaultValue(Stream.empty)
-              )
-            ) {
-              case ((currentCellResult, pendingMoves), bee) =>
-                val action = moveBee(bee, x, y, pendingMoves)
-                //                only 1 move in moves iterator
-                action.moves.foreach {
-                  case ((x, y), movingBee) =>
-                    pendingMoves((x, y)) = pendingMoves((x, y)) :+ movingBee
-                }
-                (currentCellResult ++ action.currentCellResult, pendingMoves)
-            }
-
-          moves.foreach {
-            case ((i, j), bees) =>
-              updateColony(i, j)(b => b.copy(bees = b.bees ++ bees))
-              update(i, j)(b => b.copy(bees = b.bees ++ bees))
-          }
-
-        case BeexploreCell(smell, bees, flowerPatch) => {
-          val (newBees: Iterator[Bee], moves: BMap[(Int, Int), Stream[Bee]], _) =
-            bees.foldLeft(
-              (
-                Iterator[Bee](),
-                MMap.empty[(Int, Int), Stream[Bee]].withDefaultValue(Stream.empty),
-                flowerPatch
-              )
-            ) {
-              case ((currentCellResult, pendingMoves, runningFlowerPatch), bee) =>
-                val action = moveBee(bee, x, y, pendingMoves)
-                //                only 1 move in moves iterator
-                action.moves.foreach {
-                  case ((x, y), movingBee) =>
-                    pendingMoves((x, y)) = pendingMoves((x, y)) :+ movingBee
-                }
-                (currentCellResult ++ action.currentCellResult, pendingMoves, runningFlowerPatch)
-            }
+          val (_, moves: BMap[(Int, Int), Stream[Bee]]) = calculateNewBeesAndMoves(bees)
+          updateGridForMoves(moves)
+        case BeexploreCell(smell, bees, _) =>
+          val (newBees: Iterator[Bee], moves: BMap[(Int, Int), Stream[Bee]]) = calculateNewBeesAndMoves(bees)
 
           import Cell._
-          update(x, y)(
-            cell => cell.copy(
-              smell = cell.smell + smell,
-              bees = cell.bees ++ newBees,
-              flowerPatch = grid.cells(x)(y).asInstanceOf[BeexploreCell].flowerPatch
+          update[BeexploreCell](x, y) { cell =>
+            val flowerPatch = grid.cells(x)(y).asInstanceOf[BeexploreCell].flowerPatch
+            val bees = cell.bees ++ newBees
+            val newSmell = cell.smell + smell
+            val smellAdjustment = adjustSmell(bees, flowerPatch.value)
+            cell.copy(
+              smell = newSmell + smellAdjustment,
+              bees = bees,
+              flowerPatch = flowerPatch,
             )
-          )
-          moves.foreach {
-            case ((i, j), bees) =>
-              //            movesCount += bees.size
-              update(i, j)(b => b.copy(bees = b.bees ++ bees, flowerPatch = b.flowerPatch))
-              updateColony(i, j)(b => b.copy(bees = b.bees ++ bees))
           }
-        }
+          updateGridForMoves(moves)
       }
     }
 
-    def smellBasedMoveCoords(x: Int, y: Int, moves: BMap[(Int, Int), Stream[Bee]]): (Int, Int) = {
-      val neighbourCellCoordinates = Grid.neighbourCellCoordinates(x, y)
-      val destination = Random.shuffle(Grid.SubcellCoordinates
-        .map {
-          case (i, j) =>
-            grid.cells(x)(y).smell(i)(j) + moves.get((x, y)).map(
-              bees => config.beeInitialSignal * bees.size).getOrElse(Signal.Zero)
-        })
-        .zipWithIndex
-        .sorted(implicitly[Ordering[(Signal, Int)]].reverse)
-        .iterator
-        .map { case (_, idx) =>
-          val (i, j) = neighbourCellCoordinates(idx)
-          (i, j, grid.cells(i)(j))
-        }
-        .filter(_._3 != Obstacle)
-        .nextOpt match {
-        case Opt((i, j, _)) =>
-          (i, j)
-        case Opt.Empty =>
-          (x, y)
-      }
-      if (destination._1 == config.beeColonyCoordinateX && destination._2 == config.beeColonyCoordinateY)
-        randomMoveCoords(x, y)
-      else
-        destination
-    }
+    def moveBee(bee: Bee, x: Int, y: Int, moves: Map[(Int, Int), Stream[Bee]]): BeeAction = {
 
-    def randomMoveCoords(x: Int, y: Int): (Int, Int) = {
-      var newX = x + random.nextInt(3) - 1
-      var newY = y + random.nextInt(3) - 1
-
-      if (grid.cells(newX)(newY) == Obstacle) {
-        newX = x
-        newY = y
-      }
-
-      if (newX == config.beeColonyCoordinateX && newY == config.beeColonyCoordinateY) {
-        //        println("pszczola losuje again")
-        randomMoveCoords(x, y)
-      }
-      else
-        (newX, newY)
-    }
-
-    def desiredMoveCoords(x: Int, y: Int, destination: (Int, Int), vectorFromColony: (Int, Int)): (Int, Int) = {
-      val newX = x + signum(destination._1 - vectorFromColony._1)
-      val newY = y + signum(destination._2 - vectorFromColony._2)
-      (newX, newY)
-    }
-
-    def turningAnglesCoords(x: Int, y: Int, lastMoveVector: (Int, Int)): (Int, Int) = {
-
-      val turningVector = random.nextInt(214) match {
-        case x if 0 until 58 contains x =>
-          (0, 1) //fly straight
-        case x if 58 until 97 contains x =>
-          (1, 1) // 45 degrees
-        case x if 97 until 133 contains x =>
-          (1, 0) // 90 degrees
-        case x if 133 until 178 contains x =>
-          (1, -1) // 135 degrees
-        case x if 178 until 214 contains x =>
-          (0, -1) // 180 degrees - turn around
-      }
-
-      val (newX, newY) = (lastMoveVector._1, lastMoveVector._2 * -1) match {
-        case (0, 1) =>
-          (x + turningVector._1, y + turningVector._2)
-        case (1, 0) =>
-          (x + turningVector._2, y - turningVector._1)
-        case (0, -1) =>
-          (x - turningVector._1, y - turningVector._2)
-        case (-1, 0) =>
-          (x - turningVector._2, y + turningVector._1)
-        case (1, 1) =>
-          (x + math.signum(turningVector._1 + turningVector._2), y + math.signum(turningVector._2 - turningVector._1))
-        case (-1, -1) =>
-          (x - math.signum(turningVector._1 + turningVector._2), y - math.signum(turningVector._2 - turningVector._1))
-        case (1, -1) =>
-          (x + math.signum(turningVector._2 - turningVector._1), y - math.signum(turningVector._1 + turningVector._2))
-        case (-1, 1) =>
-          (x - math.signum(turningVector._1 + turningVector._2), y + math.signum(turningVector._2 - turningVector._1))
-        case (0, 0) =>
-          (x + turningVector._1, y + turningVector._2)
-        case (_, _) =>
-          (x, y)
-      }
-
-      if (grid.cells(newX)(newY) == Obstacle || (newX == config.beeColonyCoordinateX && newY == config.beeColonyCoordinateY)) {
-        (x, y)
-      }
-      else
-        (newX, newY)
-    }
-
-
-    def moveBee(bee: Bee, x: Int, y: Int, moves: BMap[(Int, Int), Stream[Bee]]): BeeAction = {
-
-      val (newX, newY) = bee.destination match {
-        case (Int.MinValue, Int.MinValue) =>
-          if (config.signalSpeedRatio > 0 && bee.randomStepsLeft == 0)
-            smellBasedMoveCoords(x, y, moves)
-          else if (bee.lastMoveVector == (Int.MinValue, Int.MinValue))
-            randomMoveCoords(x, y) // without smell
-          else
-            turningAnglesCoords(x, y, bee.lastMoveVector)
-
-        case _ =>
-          desiredMoveCoords(x, y, bee.destination, bee.vectorFromColony)
-      }
+      val (newX, newY) = MovementStrategy.makeMove(bee, x, y, moves, grid, config)
 
       def getUpdatedBee(cell: GridPart, bee: Bee): Bee = {
         val moveVectorX = newX - x
@@ -385,40 +242,27 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)], workerId: Worker
               destination = (0, 0)
           }
 
-          case BeeColony(_, _, _, firstTripDetections, discoveredFlowerPatchCoords, discoveredFlowerPatchMetrics, returningBees) => {
+          case colony@BeeColony((x_c, y_c), _, _, firstTripDetections, discoveredFlowerPatchCoords, discoveredFlowerPatchMetrics, returningBees) => {
             //            println("bee in colony, discovered FlowerPatches: ", bee.discoveredFlowerPatches)
             // flowerPatch detection probabilities on 1st scouting trip
             if (bee.tripNumber == 1) {
-              //              println("[BEE]", bee)
-              for ((id, _) <- bee.discoveredFlowerPatches) {
+              val updatesFirstTripDetections = bee.discoveredFlowerPatches.iterator.map { case (id, _) =>
                 val discoveredFlowerPatchDistance = math.sqrt(math.pow(bee.discoveredFlowerPatches(id)._1, 2) + math.pow(bee.discoveredFlowerPatches(id)._2, 2))
-                if (firstTripDetections.contains(id))
-                  if (firstTripDetections(id)._2 > discoveredFlowerPatchDistance)
-                    firstTripDetections(id) = (firstTripDetections(id)._1 + 1, discoveredFlowerPatchDistance)
-                  else
-                    firstTripDetections(id) = (firstTripDetections(id)._1 + 1, firstTripDetections(id)._2)
-                else
-                  firstTripDetections(id) = (1, discoveredFlowerPatchDistance)
+                val (detection, distance) = firstTripDetections.getOrElse(id, (0, 0.toDouble))
+                val updatedDistance = if (distance > discoveredFlowerPatchDistance) discoveredFlowerPatchDistance else distance
+                id -> (detection + 1, updatedDistance)
               }
-              firstTripFlowerPatchCount = firstTripDetections
-              if (!returningBees.contains(0))
-                returningBees(0) = 0
+              firstTripFlowerPatchCount = (updatesFirstTripDetections ++ firstTripDetections.iterator.filter { case (firstId, _) => updatesFirstTripDetections.exists { case (id, _) => firstId == id } }).toMap
             }
-
-            returningBees(0) += 1
+            val newReturningBees = if (!returningBees.contains(0)) returningBees + (0 -> 1) else returningBees + (0 -> (returningBees(0) + 1))
             // newest coord for each flowerPatch are kept in BeeColony (since potentially the environment could dynamically change)
-            discoveredFlowerPatchCoords ++= bee.discoveredFlowerPatches
-            for ((id, _) <- bee.discoveredFlowerPatches) {
+            val newDiscoveredFlowerPatchCords = discoveredFlowerPatchCoords ++ bee.discoveredFlowerPatches
+            val beeDiscoveredFlowerUpdates = bee.discoveredFlowerPatches.iterator.map { case (id, _) =>
               val discoveredFlowerPatchDistance = math.sqrt(math.pow(bee.discoveredFlowerPatches(id)._1, 2) + math.pow(bee.discoveredFlowerPatches(id)._2, 2))
-
-              if (discoveredFlowerPatchMetrics.contains(id))
-                discoveredFlowerPatchMetrics(id) = (discoveredFlowerPatchMetrics(id)._1 + 1, discoveredFlowerPatchDistance)
-              else
-                discoveredFlowerPatchMetrics(id) = (1, discoveredFlowerPatchDistance)
+              id -> (discoveredFlowerPatchMetrics(id)._1 + 1, discoveredFlowerPatchDistance)
             }
-
+            val newDiscoveredFlowerPatchMetrics = (beeDiscoveredFlowerUpdates ++ discoveredFlowerPatchMetrics.iterator.filter { case (firstId, _) => beeDiscoveredFlowerUpdates.exists { case (id, _) => firstId == id } }).toMap
             tripNumber += 1
-            discoveredFlowerPatches.clear()
             maxTripDuration = config.beeTripDuration
             vectorFromColony = (0, 0)
 
@@ -426,7 +270,7 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)], workerId: Worker
               case 1 => //  bee colony
                 destination = (Int.MinValue, Int.MinValue)
               case 2 => // recruitment
-                val possibleDestinations = discoveredFlowerPatchCoords.values.toList
+                val possibleDestinations = newDiscoveredFlowerPatchCords.values.toList
                 if (possibleDestinations.nonEmpty)
                   destination = possibleDestinations(random.nextInt(possibleDestinations.length))
                 else
@@ -439,13 +283,14 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)], workerId: Worker
             if (beeTrips < tripNumber)
               beeTrips = tripNumber
             discoveredFlowerPatchCount = discoveredFlowerPatchMetrics
-
+            grid.cells(x_c)(y_c) = colony.copy(firstTripDetections = firstTripFlowerPatchCount,
+              discoveredFlowerPatchMetrics = newDiscoveredFlowerPatchMetrics, returningBees = newReturningBees, discoveredFlowerPatchCoords = newDiscoveredFlowerPatchCords)
           }
 
           case _ =>
         }
 
-        bee.copy(tripNumber, maxTripDuration, discoveredFlowerPatches, destination, vectorFromColony, lastMoveVector, randomStepsLeft)
+        bee.copy(tripNumber, maxTripDuration, Map.empty, destination, vectorFromColony, lastMoveVector, randomStepsLeft)
       }
 
       val updatedBee = getUpdatedBee(this.grid.cells(newX)(newY), bee)

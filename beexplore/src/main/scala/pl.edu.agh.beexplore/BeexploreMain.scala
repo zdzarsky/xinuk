@@ -4,8 +4,8 @@ import java.awt.Color
 
 import pl.edu.agh.beexplore.algorithm.BeexploreMovesController
 import pl.edu.agh.beexplore.config.BeexploreConfig
-import pl.edu.agh.beexplore.model.{BeeColony, BeexploreCell, Id}
 import pl.edu.agh.beexplore.model.parallel.BeexploreConflictResolver
+import pl.edu.agh.beexplore.model.{BeeColony, BeexploreCell, Id}
 import pl.edu.agh.xinuk.Simulation
 import pl.edu.agh.xinuk.model.DefaultSmellPropagation
 
@@ -30,7 +30,7 @@ object BeexploreMain {
   private def colonyCellToColor(cell: BeeColony): Color = {
     val hue = 0.01f
     val saturation = 1f
-    val luminance = 0.5f + cell.bees.size/100
+    val luminance = 0.5f + cell.bees.size / 100
     Color.getHSBColor(hue, saturation, luminance)
   }
 
@@ -50,7 +50,7 @@ object BeexploreMain {
       DefaultSmellPropagation.calculateSmellAddendsStandard,
       BeexploreCell.create()
     )(
-      new BeexploreMovesController(_, _)(_),
+      new BeexploreMovesController(_)(_),
       {
         case cell: BeexploreCell =>
           if (cell.flowerPatch != Id.Start && cell.bees.isEmpty) flowerPatchCellToColor(cell)

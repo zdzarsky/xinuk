@@ -1,17 +1,16 @@
 package pl.edu.agh.beexplore.model
 
-import com.avsystem.commons.MMap
 import pl.edu.agh.beexplore.config.BeexploreConfig
 import pl.edu.agh.xinuk.model.Cell.SmellArray
-import pl.edu.agh.xinuk.model.{Cell, Energy, SmellingCell}
+import pl.edu.agh.xinuk.model.{Cell, SmellingCell}
 
 final case class BeeColony(coordinates: (Int, Int),
-                            smell: SmellArray = Cell.emptySignal,
-                            bees: Vector[Bee],
-                            firstTripDetections: Map[Id, (Int, Double)] = Map.empty,
-                            discoveredFlowerPatchCoords: Map[Id, (Int, Int)] = Map.empty,
-                            discoveredFlowerPatchMetrics: Map[Id, (Int, Double)] = Map.empty,
-                            returningBees: Map[Int, Int] = Map.empty
+                           smell: SmellArray = Cell.emptySignal,
+                           bees: Vector[Bee],
+                           firstTripDetections: Map[Id, (Int, Double)] = Map.empty,
+                           discoveredFlowerPatchCoords: Map[Id, (Int, Int)] = Map.empty,
+                           discoveredFlowerPatchMetrics: Map[Id, (Int, Double)] = Map.empty,
+                           returningBees: Map[Int, Int] = Map.empty
                           ) extends SmellingCell {
   override type Self = BeeColony
 
@@ -19,6 +18,6 @@ final case class BeeColony(coordinates: (Int, Int),
 }
 
 object BeeColony {
-  def create(bees: Vector[Bee] = Vector.empty)(implicit config: BeexploreConfig):BeeColony =
-    BeeColony ((config.beeColonyCoordinateX, config.beeColonyCoordinateY),Cell.emptySignal, bees)
+  def create(bees: Vector[Bee] = Vector.empty)(implicit config: BeexploreConfig): BeeColony =
+    BeeColony((config.beeColonyCoordinateX, config.beeColonyCoordinateY), Cell.emptySignal, bees)
 }
