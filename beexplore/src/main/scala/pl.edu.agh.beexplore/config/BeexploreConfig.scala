@@ -1,6 +1,7 @@
 package pl.edu.agh.beexplore.config
 
 import pl.edu.agh.xinuk.config.{GuiType, XinukConfig}
+import pl.edu.agh.xinuk.model.Signal
 
 final case class BeexploreConfig(gridSize: Int,
                                  guiCellSize: Int,
@@ -11,5 +12,9 @@ final case class BeexploreConfig(gridSize: Int,
                                  guiType: GuiType,
                                  isSupervisor: Boolean,
                                  signalSpeedRatio: Int,
-                                 iterationsNumber: Long
+                                 iterationsNumber: Long,
+
+                                 beehiveX: Int,
+                                 beehiveY: Int,
+                                 beeSignalInitial: Signal
                                 ) extends XinukConfig {}
