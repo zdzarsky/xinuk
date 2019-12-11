@@ -14,9 +14,11 @@ import scala.collection.immutable.TreeSet
 
 class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config: BeexploreConfig) extends MovesController {
 
-  //  private val random = new Random(System.nanoTime())
+  private val hivePosition: (Int, Int) = (config.beehiveX, config.beehiveY)
+  private val hive = Beehive.create(Signal.Zero, hivePosition)
 
   override def initialGrid: (Grid, Metrics) = {
+
     val grid = Grid.empty(bufferZone)
     createBeehive(grid)
     createFlowerPatches(grid)
@@ -25,24 +27,28 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
       x <- 0 until config.gridSize
       y <- 0 until config.gridSize
       if notInBufferZone(x, y)
-    } {
-
-    }
-
+    } {}
     (grid, BeexploreMetrics())
   }
 
 
   override def makeMoves(iteration: Long, grid: Grid): (Grid, Metrics) = {
     val newGrid = grid
+    feedBeesAndReleaseScouts(grid, newGrid)
     for {
       x <- 0 until config.gridSize
       y <- 0 until config.gridSize
       if notInBufferZone(x, y)
     } {
-      makeMove(grid, newGrid, x, y)
+      makeMove(newGrid, grid, x, y)
     }
     (newGrid, BeexploreMetrics())
+  }
+
+  private def feedBeesAndReleaseScouts(grid: Grid, newGrid: Grid): Unit = {
+    val (stillHungry, notHungry) = grid.cells(hivePosition._1)(hivePosition._2).asInstanceOf[Beehive].bees.partition(_.hunger >= 0)
+    grid.cells(hivePosition._1)(hivePosition._2) = hive.copy(bees = stillHungry.map(b => b.copy(hunger = b.hunger - 1)))
+    notHungry.foreach(bee => grid.cells(hivePosition._1 + 3)(hivePosition._2 + 3) = bee)
   }
 
   private def calculatePossibleDestinations(cell: Bee, x: Int, y: Int, grid: Grid): Iterator[(Int, Int, GridPart)] = {
@@ -58,39 +64,49 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
       }
   }
 
-  def selectDestinationCell(possibleDestinations: Iterator[(Int, Int, GridPart)], newGrid: Grid): Opt[(Int, Int, GridPart)] = {
-    possibleDestinations
-      .map { case (i, j, current) => (i, j, current, newGrid.cells(i)(j)) }
-      .collectFirstOpt {
-        case (i: Int, j: Int, currentCell, BeeAccessible(_)) =>
-          (i, j, currentCell)
-      }
+  def selectDestinationCell(bee: Bee, possibleDestinations: Iterator[(Int, Int, GridPart)], newGrid: Grid): Opt[(Int, Int, GridPart)] = {
+    if (bee.hunger > 500) {
+      Opt(possibleDestinations.reduceLeft((p1, p2) => if (distanceFromHive(p1._1, p1._2) < distanceFromHive(p2._1, p2._2)) p1 else p2))
+    } else {
+      possibleDestinations
+        .map { case (i, j, current) => (i, j, current, newGrid.cells(i)(j)) }
+        .collectFirstOpt {
+          case (i: Int, j: Int, currentCell, BeeAccessible(_)) =>
+            (i, j, currentCell)
+        }
+    }
   }
 
-  private def makeMove(grid: Grid, newGrid: Grid, x: Int, y: Int): Unit = {
+  private def distanceFromHive(x1: Int, y1: Int) = {
+    Math.abs(x1 - hivePosition._1) + Math.abs(y1 - hivePosition._1)
+  }
+
+  private def makeMove(newGrid: Grid, grid: Grid, x: Int, y: Int): Unit = {
     grid.cells(x)(y) match {
       case bee: Bee =>
         val possibleDestinations = calculatePossibleDestinations(bee, x, y, grid)
-        selectDestinationCell(possibleDestinations, newGrid)
+        selectDestinationCell(bee, possibleDestinations, newGrid)
           .forEmpty {
             newGrid.cells(x)(y) = bee.copy(hunger = bee.hunger + 1)
+          }.foreach { case (newX, newY, cell) =>
+          cell match {
+            case BeeAccessible(dest) =>
+              newGrid.cells(newX)(newY) = dest.withBee(bee.experience + 1, bee.hunger + 1, bee.role)
+              grid.cells(x)(y) = EmptyCell(cell.smell)
+              newGrid.cells(x)(y) = EmptyCell(cell.smell)
+            case Beehive(_, _, bees) =>
+              grid.cells(x)(y) = EmptyCell(cell.smell)
+              newGrid.cells(x)(y) = EmptyCell(cell.smell)
+              newGrid.cells(hivePosition._1)(hivePosition._2) = hive.copy(bees = bee +: bees)
           }
-          .foreach { case (newX, newY, cell) =>
-            cell match {
-              case BeeAccessible(dest) =>
-                newGrid.cells(newX)(newY) = dest.withBee(bee.experience + 1, bee.hunger + 1, bee.role)
-                val vacated = EmptyCell(cell.smell)
-                newGrid.cells(x)(y) = vacated
-                grid.cells(x)(y) = vacated
-            }
-          }
+        }
       case _ => ()
     }
   }
 
   private def createFlowerPatches(grid: Grid): Unit = {
     for {x <- 50 to 60; y <- 50 to 60} {
-      grid.cells(x)(y) = FlowerPatch.create(initialSignal = Signal.apply(3))
+      grid.cells(x)(y) = FlowerPatch.create(initialSignal = Signal.apply(0.4))
     }
   }
 
@@ -99,7 +115,7 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
   }
 
   private def createBeehive(grid: Grid): Unit = {
-    grid.cells(config.beehiveX)(config.beehiveY) = Beehive.create(Signal.Zero)
+    grid.cells(config.beehiveX)(config.beehiveY) = hive
   }
 
   private def notInBufferZone(x: Int, y: Int) = {
