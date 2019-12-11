@@ -1,10 +1,13 @@
 package pl.edu.agh.beexplore.algorithm
 
+import com.avsystem.commons.SharedExtensions._
+import com.avsystem.commons.misc.Opt
 import pl.edu.agh.beexplore.config.BeexploreConfig
+import pl.edu.agh.beexplore.model.accesibles.BeeAccessible
 import pl.edu.agh.beexplore.model.{Bee, Beehive, FlowerPatch}
 import pl.edu.agh.beexplore.simulation.BeexploreMetrics
 import pl.edu.agh.xinuk.algorithm.MovesController
-import pl.edu.agh.xinuk.model.{Grid, Signal}
+import pl.edu.agh.xinuk.model._
 import pl.edu.agh.xinuk.simulation.Metrics
 
 import scala.collection.immutable.TreeSet
@@ -42,11 +45,46 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
     (newGrid, BeexploreMetrics())
   }
 
-  private def makeMove(grid: Grid, newGrid: Grid, x: Int, y: Int) = {
+  private def calculatePossibleDestinations(cell: Bee, x: Int, y: Int, grid: Grid): Iterator[(Int, Int, GridPart)] = {
+    val neighbourCellCoordinates = Grid.neighbourCellCoordinates(x, y)
+    Grid.SubcellCoordinates
+      .map { case (i, j) => cell.smell(i)(j) }
+      .zipWithIndex
+      .sorted(implicitly[Ordering[(Signal, Int)]].reverse)
+      .iterator
+      .map { case (_, idx) =>
+        val (i, j) = neighbourCellCoordinates(idx)
+        (i, j, grid.cells(i)(j))
+      }
+  }
 
+  def selectDestinationCell(possibleDestinations: Iterator[(Int, Int, GridPart)], newGrid: Grid): Opt[(Int, Int, GridPart)] = {
+    possibleDestinations
+      .map { case (i, j, current) => (i, j, current, newGrid.cells(i)(j)) }
+      .collectFirstOpt {
+        case (i: Int, j: Int, currentCell, BeeAccessible(_)) =>
+          (i, j, currentCell)
+      }
+  }
+
+  private def makeMove(grid: Grid, newGrid: Grid, x: Int, y: Int): Unit = {
     grid.cells(x)(y) match {
-      case Bee(_, _, _, _) =>
-      case _ =>
+      case bee: Bee =>
+        val possibleDestinations = calculatePossibleDestinations(bee, x, y, grid)
+        selectDestinationCell(possibleDestinations, newGrid)
+          .forEmpty {
+            newGrid.cells(x)(y) = bee.copy(hunger = bee.hunger + 1)
+          }
+          .foreach { case (newX, newY, cell) =>
+            cell match {
+              case BeeAccessible(dest) =>
+                newGrid.cells(newX)(newY) = dest.withBee(bee.experience + 1, bee.hunger + 1, bee.role)
+                val vacated = EmptyCell(cell.smell)
+                newGrid.cells(x)(y) = vacated
+                grid.cells(x)(y) = vacated
+            }
+          }
+      case _ => ()
     }
   }
 
