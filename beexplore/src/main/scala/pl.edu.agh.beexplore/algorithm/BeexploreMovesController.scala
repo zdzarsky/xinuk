@@ -33,7 +33,26 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
 
 
   override def makeMoves(iteration: Long, grid: Grid): (Grid, Metrics) = {
-    val newGrid = grid
+    val newGrid = Grid.empty(bufferZone)
+    for {
+      x <- 0 until config.gridSize
+      y <- 0 until config.gridSize
+      if notInBufferZone(x, y)
+    } {
+      grid.cells(x)(y) match {
+        case cell: EmptyCell =>
+          newGrid.cells(x)(y) = cell.copy()
+        case cell: FlowerPatch =>
+          newGrid.cells(x)(y) = cell.copy()
+        case cell: Bee =>
+          newGrid.cells(x)(y) = cell.copy()
+        case cell: Beehive =>
+          println(cell.bees)
+          newGrid.cells(x)(y) = cell.copy()
+        case cell =>
+          println(cell)
+      }
+    }
     feedBeesAndReleaseScouts(grid, newGrid)
     for {
       x <- 0 until config.gridSize
@@ -65,7 +84,7 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
   }
 
   def selectDestinationCell(bee: Bee, possibleDestinations: Iterator[(Int, Int, GridPart)], newGrid: Grid): Opt[(Int, Int, GridPart)] = {
-    if (bee.hunger > 500) {
+    if (bee.hunger > 15) {
       Opt(possibleDestinations.reduceLeft((p1, p2) => if (distanceFromHive(p1._1, p1._2) < distanceFromHive(p2._1, p2._2)) p1 else p2))
     } else {
       possibleDestinations
@@ -100,7 +119,7 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
               newGrid.cells(hivePosition._1)(hivePosition._2) = hive.copy(bees = bee +: bees)
           }
         }
-      case _ => ()
+      case _ =>
     }
   }
 
