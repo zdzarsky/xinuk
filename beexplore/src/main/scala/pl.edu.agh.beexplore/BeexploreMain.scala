@@ -10,7 +10,7 @@ import pl.edu.agh.beexplore.model.{Bee, Beehive, FlowerPatch}
 import pl.edu.agh.xinuk.Simulation
 import pl.edu.agh.xinuk.model.{DefaultSmellPropagation, SmellingCell}
 
-object BeexploreMain extends LazyLogging{
+object BeexploreMain extends LazyLogging {
   private val configPrefix = "beexplore"
   private val metricHeaders = Vector(
     "exampleMetrics",
@@ -19,10 +19,10 @@ object BeexploreMain extends LazyLogging{
 
   private def cellToColor(cell: SmellingCell): Color = {
     cell match {
-      case Bee(_,_,_,_) => Color.BLUE;
+      case Bee(_, _, _, _, _) => Color.BLUE;
       case FlowerPatch(_) => Color.PINK
-      case Beehive(_, _ ,_) => Color.BLACK
-//      case cell: SmellingCell => debugSmell(cell)
+      case Beehive(_, _, _) => Color.BLACK
+      case cell: SmellingCell => debugSmell(cell)
       case _ => Color.WHITE
     }
   }
