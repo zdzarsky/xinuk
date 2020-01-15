@@ -4,7 +4,7 @@ import com.avsystem.commons.SharedExtensions._
 import com.avsystem.commons.collection.CollectionAliases.MMap
 import com.avsystem.commons.misc.Opt
 import pl.edu.agh.beexplore.config.BeexploreConfig
-import pl.edu.agh.beexplore.model.Bee.Experience
+import pl.edu.agh.beexplore.model.Bee.{Experience, Experienced, Expert, Intermediate, Novice}
 import pl.edu.agh.beexplore.model.accesibles.BeeAccessible
 import pl.edu.agh.beexplore.model.{Bee, Beehive, FlowerPatch}
 import pl.edu.agh.beexplore.simulation.BeexploreMetrics
@@ -19,10 +19,22 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
   private val hivePosition: (Int, Int) = (config.beehiveX, config.beehiveY)
   private val hive = Beehive.create(Signal.Zero, hivePosition)
 
-  private val beesPositions: MMap[Bee, List[(Int, Int)]] = MMap.empty
-  private val partialDistances: MMap[Bee, Double] = MMap.empty
-  private val perExperienceFlightDistance: MMap[Experience, List[Double]] = MMap.empty
-  private val perExperienceConvexHull: MMap[Experience, List[Double]] = MMap.empty
+  private val beesPositions: MMap[Int, List[(Int, Int)]] = MMap.empty
+  private val partialDistances: MMap[Int, Double] = MMap.empty
+  private val perExperienceFlightDistance: MMap[Experience, List[Double]] = MMap(
+    Novice -> List.empty,
+    Intermediate -> List.empty,
+    Experienced -> List.empty,
+    Expert -> List.empty
+  )
+  private val perExperienceConvexHull: MMap[Experience, List[Double]] = MMap(
+    Novice -> List.empty,
+    Intermediate -> List.empty,
+    Experienced -> List.empty,
+    Expert -> List.empty
+  )
+
+  private var id = 0
 
   override def initialGrid: (Grid, Metrics) = {
 
@@ -127,25 +139,30 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
           }.foreach { case (newX, newY, cell) =>
           cell match {
             case BeeAccessible(dest) =>
-              newGrid.cells(newX)(newY) = dest.withBee(bee.numberOfFlights + 1, bee.hunger + 1, bee.role)
-              val distance = calculateDistance(beesPositions(bee).last, (newX, newY))
-              partialDistances(bee) += distance
-              beesPositions(bee) +:= (newX, newY)
+              newGrid.cells(newX)(newY) = dest.withBee(bee.id,bee.numberOfFlights, bee.experience, bee.hunger + 1, bee.role)
+              val distance = calculateDistance(beesPositions(bee.id).lastOpt.getOrElse((20,20)), (newX, newY))
+              partialDistances(bee.id) += distance
+              beesPositions(bee.id) +:= (newX, newY)
               grid.cells(x)(y) = EmptyCell(cell.smell)
               newGrid.cells(x)(y) = EmptyCell(cell.smell)
             case Beehive(_, _, bees) =>
               grid.cells(x)(y) = EmptyCell(cell.smell)
               newGrid.cells(x)(y) = EmptyCell(cell.smell)
-              newGrid.cells(hivePosition._1)(hivePosition._2) = hive.copy(bees = bee +: bees)
-              perExperienceFlightDistance(bee.experience) +:= partialDistances(bee)
-              partialDistances(bee) = 0
+              val newBee = bee.copy(experience = calculateExperience(bee), numberOfFlights = bee.numberOfFlights + 1)
+              newGrid.cells(hivePosition._1)(hivePosition._2) = hive.copy(bees = newBee +: bees)
+              perExperienceFlightDistance(bee.experience) +:= partialDistances(bee.id)
+              partialDistances(bee.id) = 0
               perExperienceConvexHull(bee.experience) +:= calculateConvexHull(bee)
-              beesPositions(bee) = List()
+              beesPositions(bee.id) = List()
           }
         }
       case _ =>
     }
   }
+
+  def calculateExperience(bee: Bee): Experience = if (bee.numberOfFlights == 0) Novice
+  else if (bee.numberOfFlights == 3) Experienced else if (bee.numberOfFlights == 5) Expert else bee.experience
+
 
   private def calculateConvexHull(bee: Bee): Double = {
     var results: Seq[(Int, Int)] = Seq.empty
@@ -184,7 +201,7 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
       // Recur for the two parts divided by a[ind]
     }
 
-    val positions = beesPositions(bee)
+    val positions = beesPositions(bee.id)
     val (min, max) = positions.foldLeft((Int.MaxValue, Int.MaxValue), (Int.MinValue, Int.MinValue)) {
       case ((minXPos, maxXPos), (posX, posY)) =>
         val newMin = if (posX < minXPos._1) (posX, posY) else minXPos
@@ -196,10 +213,7 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
     // one side of line joining a[min_x] and
     // a[max_x]
     calculate(positions, min, max, 1)
-
-
     // other side of line joining a[min_x] and
-
     calculate(positions, min, max, -1)
 
     val points = (positions.zip(positions.tail)) :+ (positions.last, positions.head)
@@ -214,10 +228,11 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
   }
 
   private def spawnBee(grid: Grid): Unit = {
-    val bee = Bee.create(config.beeSignalInitial)
+    val bee = Bee.create(id, config.beeSignalInitial)
+    id += 1
     grid.cells(20)(20) = bee
-    beesPositions(bee) = List((20, 20))
-    partialDistances(bee) = calculateDistance(hivePosition, (20, 20))
+    beesPositions(bee.id) = List((20, 20))
+    partialDistances(bee.id) = calculateDistance(hivePosition, (20, 20))
   }
 
   private def createBeehive(grid: Grid): Unit = {

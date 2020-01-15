@@ -8,6 +8,6 @@ import pl.edu.agh.xinuk.simulation.Metrics
 
 object BeexploreConflictResolver extends ConflictResolver[BeexploreConfig] {
   override def resolveConflict(current: GridPart, incoming: SmellingCell)(implicit config: BeexploreConfig): (GridPart, Metrics) = {
-    (current, BeexploreMetrics())
+    (current, BeexploreMetrics(0,0))
   }
 }
