@@ -18,7 +18,7 @@ object BeexploreMain extends LazyLogging {
     "exampleMetrics",
     "anotherExampleMetrics"
   )
-  private val treshold = 0.5
+  private val treshold = 0.3
 
   private def calculateSmellWithLimits(cells: CellArray, x: Int, y: Int): Vector[Option[Signal]] = {
     @inline def destinationCellSignal(i: Int, j: Int): Option[SmellArray] = {

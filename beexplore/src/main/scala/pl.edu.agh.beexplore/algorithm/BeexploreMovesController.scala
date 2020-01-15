@@ -13,6 +13,7 @@ import pl.edu.agh.xinuk.model._
 import pl.edu.agh.xinuk.simulation.Metrics
 
 import scala.collection.immutable.TreeSet
+import scala.util.Random
 
 class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config: BeexploreConfig) extends MovesController {
 
@@ -93,22 +94,31 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
     notHungry.foreach(bee => newGrid.cells(hivePosition._1 + 3)(hivePosition._2 + 3) = bee)
   }
 
+  implicit val ordering: Ordering[(Double, Int, Int, GridPart)] = (x: (Double, Int, Int, GridPart), y: (Double, Int, Int, GridPart)) => math.ceil(x._1 - y._1).toInt
+
   private def calculatePossibleDestinations(cell: Bee, x: Int, y: Int, grid: Grid): Iterator[(Int, Int, GridPart)] = {
     val neighbourCellCoordinates = Grid.neighbourCellCoordinates(x, y)
     Grid.SubcellCoordinates
       .map { case (i, j) => cell.smell(i)(j) }
+      .map(_.value)
       .zipWithIndex
-      .sorted(implicitly[Ordering[(Signal, Int)]].reverse)
-      .iterator
-      .map { case (_, idx) =>
+      .map { case (smell, idx) =>
         val (i, j) = neighbourCellCoordinates(idx)
-        (i, j, grid.cells(i)(j))
+        println(s"$i,$j,$smell")
+        (smell, i, j, grid.cells(i)(j))
       }
+      .map { case (smell, i, j, cell) =>
+        (Random.nextDouble() + calculateDistance((i, j), (20, 20)) * Random.nextDouble() * smell, i, j, cell)
+      }
+      .sorted(implicitly[Ordering[(Double, Int, Int, GridPart)]])
+      .map { case (_, i, j, cell) => (i, j, cell)
+      }
+      .iterator
   }
 
   def selectDestinationCell(bee: Bee, possibleDestinations: Iterator[(Int, Int, GridPart)], newGrid: Grid): Opt[(Int, Int, GridPart)] = {
     if (bee.hunger > config.beeHungerThreshold) {
-      Opt(possibleDestinations.reduceLeft((p1, p2) => if (distanceFromHive(p1._1, p1._2) < distanceFromHive(p2._1, p2._2)) p1 else p2))
+      Opt(possibleDestinations.reduceLeft((p1, p2) => if (distanceFromHive(p1._1, p1._2) <= distanceFromHive(p2._1, p2._2)) p1 else p2))
     } else {
       possibleDestinations
         .map { case (i, j, current) => (i, j, current, newGrid.cells(i)(j)) }
@@ -139,8 +149,8 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
           }.foreach { case (newX, newY, cell) =>
           cell match {
             case BeeAccessible(dest) =>
-              newGrid.cells(newX)(newY) = dest.withBee(bee.id,bee.numberOfFlights, bee.experience, bee.hunger + 1, bee.role)
-              val distance = calculateDistance(beesPositions(bee.id).lastOpt.getOrElse((20,20)), (newX, newY))
+              newGrid.cells(newX)(newY) = dest.withBee(bee.id, bee.numberOfFlights, bee.experience, bee.hunger + 1, bee.role)
+              val distance = calculateDistance(beesPositions(bee.id).lastOpt.getOrElse((20, 20)), (newX, newY))
               partialDistances(bee.id) += distance
               beesPositions(bee.id) +:= (newX, newY)
               grid.cells(x)(y) = EmptyCell(cell.smell)
