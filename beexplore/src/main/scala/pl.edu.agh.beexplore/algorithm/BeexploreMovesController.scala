@@ -148,7 +148,63 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
   }
 
   private def calculateConvexHull(bee: Bee): Double = {
-    0
+    var results: Seq[(Int, Int)] = Seq.empty
+
+    def findSide(point: (Int, Int), first: (Int, Int), second: (Int, Int)) =
+      math.signum((point._2 - first._2) * (second._1 - first._1) -
+        (second._2 - first._2) * (point._1 - first._1))
+
+    def lineDist(point: (Int, Int), first: (Int, Int), second: (Int, Int)) =
+      math.abs((point._2 - first._2) * (second._1 - first._1) -
+        (second._1 - first._1) * (point._1 - first._1))
+
+    def calculate(positions: Seq[(Int, Int)], first: (Int, Int), second: (Int, Int), side: Int): Unit = {
+      val (newPos, maxDist) = positions.zipWithIndex.foldLeft(((Int.MinValue, Int.MinValue), Int.MinValue)) {
+        case ((positionAccumulated, maxDist), (pos, i)) => {
+          val dist = lineDist(first, second, pos)
+          if (findSide(first, second, pos) == side && dist > maxDist) {
+            (pos, dist)
+          } else (positionAccumulated, maxDist)
+        }
+      }
+      // finding the point with maximum distance
+      // from L and also on the specified side of L.
+
+      // If no point is found, add the end points
+      // of L to the convex hull.
+      if (maxDist == Int.MinValue) {
+        results +:= first
+        results +:= second
+        ()
+      } else {
+        calculate(positions, newPos, first, -findSide(newPos, first, second))
+        calculate(positions, newPos, second, -findSide(newPos, second, first))
+      }
+
+      // Recur for the two parts divided by a[ind]
+    }
+
+    val positions = beesPositions(bee)
+    val (min, max) = positions.foldLeft((Int.MaxValue, Int.MaxValue), (Int.MinValue, Int.MinValue)) {
+      case ((minXPos, maxXPos), (posX, posY)) =>
+        val newMin = if (posX < minXPos._1) (posX, posY) else minXPos
+        val newMax = if (posX > maxXPos._1) (posX, posY) else maxXPos
+        (newMin, newMax)
+    }
+
+    // Recursively find convex hull points on
+    // one side of line joining a[min_x] and
+    // a[max_x]
+    calculate(positions, min, max, 1)
+
+
+    // other side of line joining a[min_x] and
+
+    calculate(positions, min, max, -1)
+
+    val points = (positions.zip(positions.tail)) :+ (positions.last, positions.head)
+
+    points.map { case (a, b) => a._1 * b._2 - a._2 * b._1 }.sum / 2.0
   }
 
   private def createFlowerPatches(grid: Grid): Unit = {
