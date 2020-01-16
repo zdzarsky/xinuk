@@ -3,7 +3,7 @@ package pl.edu.agh.beexplore.algorithm
 import com.avsystem.commons.SharedExtensions._
 import com.avsystem.commons.misc.Opt
 import pl.edu.agh.beexplore.config.BeexploreConfig
-import pl.edu.agh.beexplore.model.accesibles.BeeAccessible
+import pl.edu.agh.beexplore.model.accesibles.{BeeAccessible, FlowerPatchAccesible}
 import pl.edu.agh.beexplore.model.{Bee, Beehive, FlowerPatch}
 import pl.edu.agh.beexplore.simulation.BeexploreMetrics
 import pl.edu.agh.xinuk.algorithm.MovesController
@@ -114,7 +114,7 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
           }.foreach { case (newX, newY, cell) =>
           cell match {
             case BeeAccessible(dest) =>
-              newGrid.cells(newX)(newY) = dest.withBee(bee.experience + 1, bee.hunger + 1, bee.role)
+              newGrid.cells(newX)(newY) = dest.withBee(bee.experience + 1, bee.hunger + 1)
               grid.cells(x)(y) = EmptyCell(cell.smell)
               newGrid.cells(x)(y) = EmptyCell(cell.smell)
             case Beehive(_, _, bees) =>
@@ -123,6 +123,13 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
               newGrid.cells(hivePosition._1)(hivePosition._2) = hive.copy(bees = bee +: bees)
           }
         }
+      case flowerPatch: FlowerPatch =>
+        Grid.neighbourCellCoordinates(x, y)
+          .map(coords => grid.cells(coords._1)(coords._2))
+          .map {
+            case FlowerPatchAccesible(part) => part.withFlowers(flowerPatch.smell)
+            case _ =>
+          }
       case _ =>
     }
   }
