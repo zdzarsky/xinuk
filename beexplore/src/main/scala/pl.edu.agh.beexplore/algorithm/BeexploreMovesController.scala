@@ -4,7 +4,7 @@ import com.avsystem.commons.SharedExtensions._
 import com.avsystem.commons.collection.CollectionAliases.MMap
 import com.avsystem.commons.misc.Opt
 import pl.edu.agh.beexplore.config.BeexploreConfig
-import pl.edu.agh.beexplore.model.Bee.{Experience, Experienced, Expert, Intermediate, Novice}
+import pl.edu.agh.beexplore.model.Bee._
 import pl.edu.agh.beexplore.model.accesibles.BeeAccessible
 import pl.edu.agh.beexplore.model.{Bee, Beehive, FlowerPatch}
 import pl.edu.agh.beexplore.simulation.BeexploreMetrics
@@ -12,6 +12,7 @@ import pl.edu.agh.xinuk.algorithm.MovesController
 import pl.edu.agh.xinuk.model._
 import pl.edu.agh.xinuk.simulation.Metrics
 
+import scala.collection.immutable
 import scala.collection.immutable.TreeSet
 import scala.util.Random
 
@@ -69,7 +70,6 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
         case cell: Beehive =>
           newGrid.cells(x)(y) = cell.copy()
         case cell =>
-          println(cell)
       }
     }
     newGrid
@@ -104,11 +104,10 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
       .zipWithIndex
       .map { case (smell, idx) =>
         val (i, j) = neighbourCellCoordinates(idx)
-        println(s"$i,$j,$smell")
         (smell, i, j, grid.cells(i)(j))
       }
       .map { case (smell, i, j, cell) =>
-        (Random.nextDouble() + calculateDistance((i, j), (20, 20)) * Random.nextDouble() * smell, i, j, cell)
+        (Random.nextDouble() * calculateDistance((i, j), (30, 30)), i, j, cell)
       }
       .sorted(implicitly[Ordering[(Double, Int, Int, GridPart)]])
       .map { case (_, i, j, cell) => (i, j, cell)
@@ -116,8 +115,15 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
       .iterator
   }
 
+  def getExperienceFactor(bee: Bee) = bee.experience match {
+    case Novice => 1
+    case Bee.Intermediate => 3
+    case Bee.Experienced => 6
+    case Bee.Expert => 6
+  }
+
   def selectDestinationCell(bee: Bee, possibleDestinations: Iterator[(Int, Int, GridPart)], newGrid: Grid): Opt[(Int, Int, GridPart)] = {
-    if (bee.hunger > config.beeHungerThreshold) {
+    if (bee.hunger > config.beeHungerThreshold * getExperienceFactor(bee)) {
       Opt(possibleDestinations.reduceLeft((p1, p2) => if (distanceFromHive(p1._1, p1._2) <= distanceFromHive(p2._1, p2._2)) p1 else p2))
     } else {
       possibleDestinations
@@ -150,7 +156,7 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
           cell match {
             case BeeAccessible(dest) =>
               newGrid.cells(newX)(newY) = dest.withBee(bee.id, bee.numberOfFlights, bee.experience, bee.hunger + 1, bee.role)
-              val distance = calculateDistance(beesPositions(bee.id).lastOpt.getOrElse((20, 20)), (newX, newY))
+              val distance = calculateDistance(beesPositions(bee.id).lastOpt.getOrElse((30, 30)), (newX, newY))
               partialDistances(bee.id) += distance
               beesPositions(bee.id) +:= (newX, newY)
               grid.cells(x)(y) = EmptyCell(cell.smell)
@@ -162,7 +168,11 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
               newGrid.cells(hivePosition._1)(hivePosition._2) = hive.copy(bees = newBee +: bees)
               perExperienceFlightDistance(bee.experience) +:= partialDistances(bee.id)
               partialDistances(bee.id) = 0
-              perExperienceConvexHull(bee.experience) +:= calculateConvexHull(bee)
+              val convexHull = calculateConvexHull(bee)
+
+
+              perExperienceConvexHull(bee.experience) +:= convexHull
+              println(perExperienceConvexHull)
               beesPositions(bee.id) = List()
           }
         }
@@ -175,60 +185,97 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
 
 
   private def calculateConvexHull(bee: Bee): Double = {
-    var results: Seq[(Int, Int)] = Seq.empty
+    def lineDistance(line: ((Int, Int), (Int, Int))): ((Int, Int)) => Double = {
 
-    def findSide(point: (Int, Int), first: (Int, Int), second: (Int, Int)) =
-      math.signum((point._2 - first._2) * (second._1 - first._1) -
-        (second._2 - first._2) * (point._1 - first._1))
+      line match {
+        case ((x1, y1), (x2, y2)) =>
 
-    def lineDist(point: (Int, Int), first: (Int, Int), second: (Int, Int)) =
-      math.abs((point._2 - first._2) * (second._1 - first._1) -
-        (second._1 - first._1) * (point._1 - first._1))
+          val divider = Math.sqrt((y2 - y1) * (y2 - y1) + (x2 - x1) * (x2 - x1))
+          val dy = y2 - y1
+          val dx = x2 - x1
+          val rest = x2 * y1 - y2 * x1
 
-    def calculate(positions: Seq[(Int, Int)], first: (Int, Int), second: (Int, Int), side: Int): Unit = {
-      val (newPos, maxDist) = positions.zipWithIndex.foldLeft(((Int.MinValue, Int.MinValue), Int.MinValue)) {
-        case ((positionAccumulated, maxDist), (pos, i)) => {
-          val dist = lineDist(first, second, pos)
-          if (findSide(first, second, pos) == side && dist > maxDist) {
-            (pos, dist)
-          } else (positionAccumulated, maxDist)
+          (point: (Int, Int)) => (dy * point._1 - dx * point._2 + rest) / divider
+      }
+    }
+
+    // barycentric coordinate system
+    def isInsideTheTriangle(triangle: ((Int, Int), (Int, Int), (Int, Int))): ((Int, Int)) => Boolean = {
+
+      triangle match {
+        case ((x1, y1), (x2, y2), (x3, y3)) =>
+
+
+          val denominator = (y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3)
+          val dy2y3 = y2 - y3
+          val dx3x2 = x3 - x2
+          val dy3y1 = y3 - y1
+          val dx1x3 = x1 - x3
+
+          point: (Int, Int) => {
+            lazy val a = (dy2y3 * (point._1 - x3) + dx3x2 * (point._2 - y3)) / denominator
+            lazy val b = (dy3y1 * (point._1 - x3) + dx1x3 * (point._2 - y3)) / denominator
+            lazy val c = 1 - a - b
+
+            (0 <= a && a <= 1) && (0 <= b && b <= 1) && (0 <= c && c <= 1)
+
+          }
+
+      }
+
+    }
+
+    def quickHull(points: List[(Int, Int)]): List[(Int, Int)] = {
+
+      def findHull(set: List[((Int, Int), Double)], point1: (Int, Int), point2: (Int, Int)): List[(Int, Int)] = {
+        if (set.isEmpty)
+          Nil
+        else {
+
+          val (maxDistancePoint, _) = set.foldLeft(set.head) { case (maxDistanceItem, item) =>
+            if (Math.abs(item._2) > Math.abs(maxDistanceItem._2))
+              item
+            else
+              maxDistanceItem
+          }
+
+          val belongsFunc = isInsideTheTriangle((point1, point2, maxDistancePoint))
+
+          val pointsLeft = set.filter(p => (p._1 != maxDistancePoint) && !belongsFunc(p._1)).map(_._1)
+
+          val distanceSet1Func = lineDistance((point1, maxDistancePoint))
+          val set1 = pointsLeft.map(p => (p, distanceSet1Func(p))).filter(_._2 < 0) // to the right of the oriented line
+
+          val distanceSet2Func = lineDistance((maxDistancePoint, point2))
+          val set2 = pointsLeft.map(p => (p, distanceSet2Func(p))).filter(_._2 < 0) // to the right of the oriented line
+
+          findHull(set1, point1, maxDistancePoint) ::: (maxDistancePoint :: findHull(set2, maxDistancePoint, point2))
+
         }
       }
-      // finding the point with maximum distance
-      // from L and also on the specified side of L.
 
-      // If no point is found, add the end points
-      // of L to the convex hull.
-      if (maxDist == Int.MinValue) {
-        results +:= first
-        results +:= second
-        ()
-      } else {
-        calculate(positions, newPos, first, -findSide(newPos, first, second))
-        calculate(positions, newPos, second, -findSide(newPos, second, first))
-      }
 
-      // Recur for the two parts divided by a[ind]
+      val leftPoint = points.foldLeft(points.head) { case (min, current) => if (current._1 < min._1) current else min }
+      val rightPoint = points.foldLeft(points.head) { case (max, current) => if (current._1 > max._1) current else max }
+
+      val distanceFuncSet1 = lineDistance((leftPoint, rightPoint))
+      val pointsWithDistanceSet = points.map(p => (p, distanceFuncSet1(p)))
+
+      val set1 = pointsWithDistanceSet.filter(_._2 < 0) // on the top/right of the line
+
+      val set2 = pointsWithDistanceSet.filter(_._2 > 0) // bottom/left of the line
+
+      (leftPoint :: findHull(set1, leftPoint, rightPoint)) ::: (rightPoint :: findHull(set2, rightPoint, leftPoint))
+
     }
 
-    val positions = beesPositions(bee.id)
-    val (min, max) = positions.foldLeft((Int.MaxValue, Int.MaxValue), (Int.MinValue, Int.MinValue)) {
-      case ((minXPos, maxXPos), (posX, posY)) =>
-        val newMin = if (posX < minXPos._1) (posX, posY) else minXPos
-        val newMax = if (posX > maxXPos._1) (posX, posY) else maxXPos
-        (newMin, newMax)
-    }
+    val results = quickHull(beesPositions(bee.id))
+    val xx = results.map(p => p._1)
+    val yy = results.map(p => p._2)
+    val overlace: immutable.Seq[(Int, Int)] = xx zip yy.drop(1) ++ yy.take(1)
+    val underlace: immutable.Seq[(Int, Int)] = yy zip xx.drop(1) ++ xx.take(1)
 
-    // Recursively find convex hull points on
-    // one side of line joining a[min_x] and
-    // a[max_x]
-    calculate(positions, min, max, 1)
-    // other side of line joining a[min_x] and
-    calculate(positions, min, max, -1)
-
-    val points = (positions.zip(positions.tail)) :+ (positions.last, positions.head)
-
-    points.map { case (a, b) => a._1 * b._2 - a._2 * b._1 }.sum / 2.0
+    (overlace.map(t => t._1 * t._2).sum - underlace.map(t => t._1 * t._2).sum).abs / 2.0
   }
 
   private def createFlowerPatches(grid: Grid): Unit = {
@@ -240,9 +287,9 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
   private def spawnBee(grid: Grid): Unit = {
     val bee = Bee.create(id, config.beeSignalInitial)
     id += 1
-    grid.cells(20)(20) = bee
-    beesPositions(bee.id) = List((20, 20))
-    partialDistances(bee.id) = calculateDistance(hivePosition, (20, 20))
+    grid.cells(31)(31) = bee
+    beesPositions(bee.id) = List((31, 31))
+    partialDistances(bee.id) = calculateDistance(hivePosition, (30, 30))
   }
 
   private def createBeehive(grid: Grid): Unit = {

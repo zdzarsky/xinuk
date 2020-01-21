@@ -10,7 +10,7 @@ import pl.edu.agh.beexplore.model.{Bee, Beehive, FlowerPatch}
 import pl.edu.agh.xinuk.Simulation
 import pl.edu.agh.xinuk.model.Cell.SmellArray
 import pl.edu.agh.xinuk.model.Grid.{CellArray, SubcellCoordinates}
-import pl.edu.agh.xinuk.model.{DefaultSmellPropagation, Signal, SmellingCell}
+import pl.edu.agh.xinuk.model.{Signal, SmellingCell}
 
 object BeexploreMain extends LazyLogging {
   private val configPrefix = "beexplore"
@@ -33,9 +33,10 @@ object BeexploreMain extends LazyLogging {
         }
         )
       case (i, j) =>
-        destinationCellSignal(i, j).map(_.apply(i)(j)).map{ signal => {
-          if(signal.value <= treshold) Signal.Zero else signal
-        }}
+        destinationCellSignal(i, j).map(_.apply(i)(j)).map { signal => {
+          if (signal.value <= treshold) Signal.Zero else signal
+        }
+        }
     }
   }
 
