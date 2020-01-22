@@ -5,6 +5,6 @@ import pl.edu.agh.beexplore.model.Beehive
 import pl.edu.agh.xinuk.model.Grid
 
 trait HoneyWorld {
-  def create(grid: Grid): Unit
+  def create(grid: Grid): Seq[Int]
   def hive() : Beehive
 }

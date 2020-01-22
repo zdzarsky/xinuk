@@ -10,7 +10,7 @@ import pl.edu.agh.beexplore.model.{Bee, Beehive, FlowerPatch}
 import pl.edu.agh.xinuk.Simulation
 import pl.edu.agh.xinuk.model.Cell.SmellArray
 import pl.edu.agh.xinuk.model.Grid.CellArray
-import pl.edu.agh.xinuk.model.{Signal, SmellingCell}
+import pl.edu.agh.xinuk.model.{Grid, Signal, SmellingCell}
 
 object BeexploreMain extends LazyLogging {
   private val configPrefix = "beexplore"
@@ -25,7 +25,7 @@ object BeexploreMain extends LazyLogging {
       cells.lift(x + i - 1).flatMap(_.lift(y + j - 1).map(_.smell))
     }
 
-    SubcellCoordinates.map {
+    Grid.SubcellCoordinates.map {
       case (i, j) if i == 1 || j == 1 =>
         destinationCellSignal(i, j).map(signal => {
           val resulting = signal(i)(j) + signal(i + j - 1)(i + j - 1) + signal(i - j + 1)(j - i + 1)

@@ -36,14 +36,15 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
     Expert -> List.empty
   )
 
-  private var id = 0
-
   override def initialGrid: (Grid, Metrics) = {
     val grid = Grid.empty(bufferZone)
     if(mapPath.isEmpty) {
-      world.create(grid)
+      world.create(grid).foreach{beeIndex =>
+        beesPositions(beeIndex) = List.empty
+        partialDistances(beeIndex) = 0
+      }
     }
-    (grid, BeexploreMetrics())
+    (grid, BeexploreMetrics(0, 0))
   }
 
   override def makeMoves(iteration: Long, grid: Grid): (Grid, Metrics) = {
@@ -52,11 +53,11 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
     for {
       x <- 0 until config.gridSize
       y <- 0 until config.gridSize
-      if(GridUtils.notInBufferZone(x, y))
+      if GridUtils.notInBufferZone(x, y)
     } {
       applyBehavior(newGrid, grid, x, y)
     }
-    (newGrid, BeexploreMetrics())
+    (newGrid, BeexploreMetrics(0, 0))
   }
 
   private def feedBeesAndReleaseScouts(grid: Grid, newGrid: Grid): Unit = {
@@ -79,7 +80,7 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
         (smell, i, j, grid.cells(i)(j))
       }
       .map { case (smell, i, j, cell) =>
-        (smell  * Random.nextDouble() * getExperienceFactor(bee) * distanceFromHive(i, j), i, j, cell)
+        (Random.nextDouble() * getExperienceFactor(bee) * distanceFromHive(i, j), i, j, cell)
       }
       .sorted(implicitly[Ordering[(Double, Int, Int, GridPart)]])
       .map { case (_, i, j, cell) => (i, j, cell)
@@ -87,7 +88,7 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
       .iterator
   }
 
-  def getExperienceFactor(bee: Bee) = bee.experience match {
+  def getExperienceFactor(bee: Bee): Int = bee.experience match {
     case Novice => 1
     case Bee.Intermediate => 3
     case Bee.Experienced => 6
