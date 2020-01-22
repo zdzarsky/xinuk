@@ -94,12 +94,12 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
     notHungry.foreach(bee => newGrid.cells(hivePosition._1 + 3)(hivePosition._2 + 3) = bee)
   }
 
-  implicit val ordering: Ordering[(Double, Int, Int, GridPart)] = (x: (Double, Int, Int, GridPart), y: (Double, Int, Int, GridPart)) => math.ceil(x._1 - y._1).toInt
+  implicit val ordering: Ordering[(Double, Int, Int, GridPart)] = (x: (Double, Int, Int, GridPart), y: (Double, Int, Int, GridPart)) => math.ceil(y._1 - x._1).toInt
 
-  private def calculatePossibleDestinations(cell: Bee, x: Int, y: Int, grid: Grid): Iterator[(Int, Int, GridPart)] = {
+  private def calculatePossibleDestinations(bee: Bee, x: Int, y: Int, grid: Grid): Iterator[(Int, Int, GridPart)] = {
     val neighbourCellCoordinates = Grid.neighbourCellCoordinates(x, y)
     Grid.SubcellCoordinates
-      .map { case (i, j) => cell.smell(i)(j) }
+      .map { case (i, j) => bee.smell(i)(j) }
       .map(_.value)
       .zipWithIndex
       .map { case (smell, idx) =>
@@ -107,7 +107,7 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
         (smell, i, j, grid.cells(i)(j))
       }
       .map { case (smell, i, j, cell) =>
-        (Random.nextDouble() * calculateDistance((i, j), (30, 30)), i, j, cell)
+        (Random.nextDouble() * getExperienceFactor(bee) * distanceFromHive(i, j), i, j, cell)
       }
       .sorted(implicitly[Ordering[(Double, Int, Int, GridPart)]])
       .map { case (_, i, j, cell) => (i, j, cell)
@@ -171,7 +171,7 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
               val convexHull = calculateConvexHull(bee)
 
 
-              perExperienceConvexHull(bee.experience) +:= convexHull
+              perExperienceConvexHull(newBee.experience) +:= convexHull
               println(perExperienceConvexHull)
               beesPositions(bee.id) = List()
           }
