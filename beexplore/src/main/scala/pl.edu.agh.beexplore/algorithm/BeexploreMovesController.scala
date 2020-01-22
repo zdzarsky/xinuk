@@ -142,7 +142,7 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
               beesPositions(bee.id) +:= (newX, newY)
               grid.cells(x)(y) = EmptyCell(cell.smell)
               newGrid.cells(x)(y) = EmptyCell(cell.smell)
-            case Beehive(_, _, bees) =>
+            case Beehive(_, _, bees) if bee.hunger >= config.beeHungerThreshold =>
               grid.cells(x)(y) = EmptyCell(cell.smell)
               newGrid.cells(x)(y) = EmptyCell(cell.smell)
               val newBee = bee.copy(experience = calculateExperience(bee), numberOfFlights = bee.numberOfFlights + 1)
