@@ -19,7 +19,7 @@ object BeexploreMain extends LazyLogging{
 
   private def cellToColor(cell: SmellingCell): Color = {
     cell match {
-      case Bee(_,_,_) => Color.BLUE;
+      case Bee(_,_,_) => Color.WHITE
       case FlowerPatch(_) => Color.PINK
       case Beehive(_, _ ,_) => Color.BLACK
       case cell: SmellingCell => debugSmell(cell)
