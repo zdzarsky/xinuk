@@ -18,8 +18,8 @@ import scala.collection.immutable.TreeSet
 import scala.util.Random
 
 class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config: BeexploreConfig) extends MovesController {
-   val mapPath = ""
-   val world: HoneyWorld = if(mapPath.isEmpty) new IdealWorld() else new MapWorld()
+  val mapPath = ""
+  val world: HoneyWorld = if (mapPath.isEmpty) new IdealWorld() else new MapWorld()
 
   private val beesPositions: MMap[Int, List[(Int, Int)]] = MMap.empty
   private val partialDistances: MMap[Int, Double] = MMap.empty
@@ -38,8 +38,8 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
 
   override def initialGrid: (Grid, Metrics) = {
     val grid = Grid.empty(bufferZone)
-    if(mapPath.isEmpty) {
-      world.create(grid).foreach{beeIndex =>
+    if (mapPath.isEmpty) {
+      world.create(grid).foreach { beeIndex =>
         beesPositions(beeIndex) = List.empty
         partialDistances(beeIndex) = 0
       }
@@ -67,11 +67,11 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
     notHungry.foreach(bee => newGrid.cells(hivePosition._1 + 3)(hivePosition._2 + 3) = bee) // add here experience based release from hive
   }
 
-  implicit val ordering: Ordering[(Double, Int, Int, GridPart)] = (x: (Double, Int, Int, GridPart), y: (Double, Int, Int, GridPart)) => math.ceil(y._1 - x._1).toInt
+  implicit val ordering: Ordering[(Double, Int, Int, GridPart)] = (x: (Double, Int, Int, GridPart), y: (Double, Int, Int, GridPart)) => math.floor(math.signum(y._1 - x._1)).toInt
 
   private def calculatePossibleDestinations(bee: Bee, x: Int, y: Int, grid: Grid): Iterator[(Int, Int, GridPart)] = {
     val neighbourCellCoordinates = Grid.neighbourCellCoordinates(x, y)
-    Grid.SubcellCoordinates
+    val enhancedCoordinates = Grid.SubcellCoordinates
       .map { case (i, j) => bee.smell(i)(j) }
       .map(_.value)
       .zipWithIndex
@@ -79,25 +79,26 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
         val (i, j) = neighbourCellCoordinates(idx)
         (smell, i, j, grid.cells(i)(j))
       }
-      .map { case (smell, i, j, cell) =>
-        (Random.nextDouble() * getExperienceFactor(bee) * distanceFromHive(i, j), i, j, cell)
-      }
+    enhancedCoordinates.optIf(Random.nextDouble() > getExperienceFactor(bee)).map(_.map { case (_, i, j, cell) =>
+      val randomizedFactor = Random.nextDouble() * distanceFromHive(i, j)
+      (randomizedFactor, i, j, cell)
+    }).getOrElse(enhancedCoordinates)
       .sorted(implicitly[Ordering[(Double, Int, Int, GridPart)]])
       .map { case (_, i, j, cell) => (i, j, cell)
       }
       .iterator
   }
 
-  def getExperienceFactor(bee: Bee): Int = bee.experience match {
-    case Novice => 1
-    case Bee.Intermediate => 3
-    case Bee.Experienced => 6
-    case Bee.Expert => 6
+  def getExperienceFactor(bee: Bee): Double = bee.experience match {
+    case Novice => 0.2
+    case Bee.Intermediate => 0.4
+    case Bee.Experienced => 0.6
+    case Bee.Expert => 0.8
   }
 
   def selectDestinationCell(bee: Bee, possibleDestinations: Iterator[(Int, Int, GridPart)], newGrid: Grid): Opt[(Int, Int, GridPart)] = {
     val destinations = possibleDestinations.toList.filter(!_._3.isInstanceOf[FlowerPatch])
-    if (bee.hunger > config.beeHungerThreshold * getExperienceFactor(bee)) {
+    if (bee.hunger > config.beeHungerThreshold * (10 * getExperienceFactor(bee))) {
       Opt(destinations.reduceLeft(
         (p1, p2) =>
           if (distanceFromHive(p1._1, p1._2) <= distanceFromHive(p2._1, p2._2)) p1 else p2))
@@ -123,7 +124,7 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
   private def applyBehavior(newGrid: Grid, grid: Grid, x: Int, y: Int): Unit = {
     grid.cells(x)(y) match {
       case bee: Bee =>
-        Grid.neighbourCellCoordinates(x, y).map(pt => grid.cells(pt._1)(pt._2)).foreach{
+        Grid.neighbourCellCoordinates(x, y).map(pt => grid.cells(pt._1)(pt._2)).foreach {
           case FlowerPatch(smell) =>
             newGrid.cells(x)(y) = bee.withSmell(bee.smellWithoutArray(smell))
           case _ =>
@@ -149,14 +150,13 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
               perExperienceFlightDistance(bee.experience) +:= partialDistances(bee.id)
               partialDistances(bee.id) = 0
               val convexHull = calculateConvexHull(bee)
-
-
               perExperienceConvexHull(newBee.experience) +:= convexHull
               println(perExperienceConvexHull)
               beesPositions(bee.id) = List()
+            case _ =>
           }
         }
-      case FlowerPatch(smell) => newGrid.cells(x)(y) = FlowerPatch.create(Signal(0.4))
+      case FlowerPatch(_) => newGrid.cells(x)(y) = FlowerPatch.create(Signal(0.4))
       case _ =>
     }
   }
