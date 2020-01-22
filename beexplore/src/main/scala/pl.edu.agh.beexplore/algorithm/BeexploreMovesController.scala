@@ -97,7 +97,7 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
   }
 
   def selectDestinationCell(bee: Bee, possibleDestinations: Iterator[(Int, Int, GridPart)], newGrid: Grid): Opt[(Int, Int, GridPart)] = {
-    val destinations = possibleDestinations.toList.filter(!_._3.isInstanceOf[FlowerPatch])
+    val destinations = possibleDestinations.toList
     if (bee.hunger > config.beeHungerThreshold * (10 * getExperienceFactor(bee))) {
       Opt(destinations.reduceLeft(
         (p1, p2) =>
@@ -122,13 +122,12 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
   }
 
   private def applyBehavior(newGrid: Grid, grid: Grid, x: Int, y: Int): Unit = {
+    this.world.destroyedPatchesCoords.foreach( c =>
+      newGrid.cells(c._1)(c._2) = FlowerPatch.create(Signal(0.4))
+    )
     grid.cells(x)(y) match {
+      case FlowerPatch(_) if !newGrid.cells(x)(y).isInstanceOf[Bee] => newGrid.cells(x)(y) = FlowerPatch.create(Signal(0.4))
       case bee: Bee =>
-        Grid.neighbourCellCoordinates(x, y).map(pt => grid.cells(pt._1)(pt._2)).foreach {
-          case FlowerPatch(smell) =>
-            newGrid.cells(x)(y) = bee.withSmell(bee.smellWithoutArray(smell))
-          case _ =>
-        }
         val possibleDestinations = calculatePossibleDestinations(bee, x, y, grid)
         selectDestinationCell(bee, possibleDestinations, newGrid)
           .forEmpty {
@@ -136,6 +135,10 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
           }.foreach { case (newX, newY, cell) =>
           cell match {
             case BeeAccessible(dest) =>
+              grid.cells(newX)(newY) match {
+                case FlowerPatch(_) => world.destroyedPatchesCoords ++ Iterator((x, y))
+                case _ =>
+              }
               newGrid.cells(newX)(newY) = dest.withBee((bee.smell.flatten.reduce((a, b) => a + b) / 9.0), bee.id, bee.numberOfFlights, bee.experience, bee.hunger + 1)
               val distance = calculateDistance(beesPositions(bee.id).lastOpt.getOrElse((30, 30)), (newX, newY))
               partialDistances(bee.id) += distance
@@ -156,9 +159,9 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
             case _ =>
           }
         }
-      case FlowerPatch(_) => newGrid.cells(x)(y) = FlowerPatch.create(Signal(0.4))
       case _ =>
     }
+
   }
 
   def calculateExperience(bee: Bee): Experience = if (bee.numberOfFlights == 0) Novice

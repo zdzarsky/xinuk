@@ -5,6 +5,8 @@ import pl.edu.agh.beexplore.config.BeexploreConfig
 import pl.edu.agh.beexplore.model.{Bee, Beehive, FlowerPatch}
 import pl.edu.agh.xinuk.model.{Grid, Signal}
 
+import scala.collection.mutable
+
 class IdealWorld(implicit config: BeexploreConfig) extends HoneyWorld {
 
   private var id = 0

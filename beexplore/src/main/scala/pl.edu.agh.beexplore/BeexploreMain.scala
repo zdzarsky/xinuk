@@ -24,7 +24,7 @@ object BeexploreMain extends LazyLogging {
       case Bee(_, _, _, _, _) => Color.BLUE;
       case FlowerPatch(_) => Color.PINK
       case Beehive(_, _, _) => Color.BLACK
-      case cell: SmellingCell => debugSmell(cell)
+//      case cell: SmellingCell => debugSmell(cell)
       case _ => Color.WHITE
     }
   }
