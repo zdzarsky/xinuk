@@ -136,7 +136,7 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
           }.foreach { case (newX, newY, cell) =>
           cell match {
             case BeeAccessible(dest) =>
-              newGrid.cells(newX)(newY) = dest.withBee(bee.id, bee.numberOfFlights, bee.experience, bee.hunger + 1)
+              newGrid.cells(newX)(newY) = dest.withBee((bee.smell.flatten.reduce((a, b) => a + b) / 9.0), bee.id, bee.numberOfFlights, bee.experience, bee.hunger + 1)
               val distance = calculateDistance(beesPositions(bee.id).lastOpt.getOrElse((30, 30)), (newX, newY))
               partialDistances(bee.id) += distance
               beesPositions(bee.id) +:= (newX, newY)

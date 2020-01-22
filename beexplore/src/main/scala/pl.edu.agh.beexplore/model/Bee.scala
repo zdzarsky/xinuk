@@ -1,6 +1,6 @@
 package pl.edu.agh.beexplore.model
 
-import pl.edu.agh.beexplore.model.Bee.{Experience}
+import pl.edu.agh.beexplore.model.Bee.Experience
 import pl.edu.agh.xinuk.model.Cell.SmellArray
 import pl.edu.agh.xinuk.model.{Cell, Signal, SmellingCell}
 

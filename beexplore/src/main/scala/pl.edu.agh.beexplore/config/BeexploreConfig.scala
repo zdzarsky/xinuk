@@ -17,5 +17,6 @@ final case class BeexploreConfig(gridSize: Int,
                                  beehiveX: Int,
                                  beehiveY: Int,
                                  beeSignalInitial: Signal,
+                                 beeSignalAcquired: Signal,
                                  beeHungerThreshold: Int
                                 ) extends XinukConfig {}
