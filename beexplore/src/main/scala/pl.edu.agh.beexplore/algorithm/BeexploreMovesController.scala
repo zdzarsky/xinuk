@@ -17,6 +17,16 @@ import scala.collection.immutable
 import scala.collection.immutable.TreeSet
 import scala.util.Random
 
+/* * * * * *
+*  TODO:
+*   1. Zjadanie kwiatków
+*   2. Pszczoły nawzajem
+*   3. Pusta referencja w ulu
+*   4. Zapisywanie metryk do CSV + dorobienie skali w configu
+*   5. Plot.ly (polecany framework do wykresów)
+*   6. Wnioski na wiki
+* * * * */
+
 class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config: BeexploreConfig) extends MovesController {
   val world: HoneyWorld = if (config.mapPath.isEmpty) new IdealWorld() else new MapWorld()
 
@@ -152,6 +162,7 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
               val convexHull = calculateConvexHull(bee)
               perExperienceConvexHull(newBee.experience) +:= convexHull
               println(perExperienceConvexHull)
+              println(perExperienceFlightDistance)
               beesPositions(bee.id) = List()
             case _ =>
           }
