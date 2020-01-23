@@ -122,9 +122,6 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
   }
 
   private def applyBehavior(newGrid: Grid, grid: Grid, x: Int, y: Int): Unit = {
-    this.world.destroyedPatchesCoords.foreach( c =>
-      newGrid.cells(c._1)(c._2) = FlowerPatch.create(Signal(0.4))
-    )
     grid.cells(x)(y) match {
       case FlowerPatch(_) if !newGrid.cells(x)(y).isInstanceOf[Bee] => newGrid.cells(x)(y) = FlowerPatch.create(Signal(0.4))
       case bee: Bee =>
@@ -136,7 +133,7 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
           cell match {
             case BeeAccessible(dest) =>
               grid.cells(newX)(newY) match {
-                case FlowerPatch(_) => world.destroyedPatchesCoords ++ Iterator((x, y))
+                case FlowerPatch(_) => world.destroyedPatchesCoords.+=:((newX, newY))
                 case _ =>
               }
               newGrid.cells(newX)(newY) = dest.withBee((bee.smell.flatten.reduce((a, b) => a + b) / 9.0), bee.id, bee.numberOfFlights, bee.experience, bee.hunger + 1)
@@ -161,7 +158,15 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
         }
       case _ =>
     }
+    this.world.destroyedPatchesCoords.foreach( c =>
+      newGrid.cells(c._1)(c._2) match {
+        case _ : Bee =>
+        case _ =>
+          newGrid.cells(c._1)(c._2) = FlowerPatch.create(Signal(0.4))
+          this.world.destroyedPatchesCoords -= c
 
+      }
+    )
   }
 
   def calculateExperience(bee: Bee): Experience = if (bee.numberOfFlights == 0) Novice
