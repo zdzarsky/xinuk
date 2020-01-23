@@ -1,20 +1,15 @@
 package pl.edu.agh.beexplore.utils
 
-import com.avsystem.commons.SharedExtensions._
 import pl.edu.agh.beexplore.config.BeexploreConfig
 import pl.edu.agh.beexplore.model.{Bee, Beehive, FlowerPatch}
 import pl.edu.agh.xinuk.model.{Grid, Signal}
 
-import scala.collection.mutable
-
 class IdealWorld(implicit config: BeexploreConfig) extends HoneyWorld {
 
-  private var id = 0
-
   private val hivePosition: (Int, Int) = (config.beehiveX, config.beehiveY)
-  val hive: Beehive = Beehive.create(Signal.Zero, hivePosition)
+  val hive: Beehive = Beehive.create(Signal.Zero, hivePosition, Vector.empty)
 
-  override def create(grid: Grid): Seq[Int] = {
+  override def create(grid: Grid): Unit = {
     createBeehive(grid, config)
     createFlowerPatches(grid)
     spawnBee(grid, config)
@@ -32,15 +27,17 @@ class IdealWorld(implicit config: BeexploreConfig) extends HoneyWorld {
     }
   }
 
-  private def spawnBee(grid: Grid, config: BeexploreConfig): Seq[Int] = {
+  private def spawnBee(grid: Grid, config: BeexploreConfig): Unit = {
     val positions = Seq((20, 20), (15, 15), (29, 60))
-    (0 to 2).setup(_.foreach { beeId =>
+    (0 to 2).foreach { beeId =>
       val (x, y) = positions(beeId)
       grid.cells(x)(y) = Bee.create(beeId, config.beeSignalInitial)
-    })
+    }
   }
 
   private def createBeehive(grid: Grid, config: BeexploreConfig): Unit = {
     grid.cells(config.beehiveX)(config.beehiveY) = hive
   }
+
+  override def beeIds(): Seq[Int] = (0 to 2)
 }

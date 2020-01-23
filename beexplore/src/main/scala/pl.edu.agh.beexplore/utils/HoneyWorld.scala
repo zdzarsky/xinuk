@@ -8,6 +8,7 @@ import scala.collection.mutable
 
 trait HoneyWorld {
   val destroyedPatchesCoords: mutable.ListBuffer[(Int, Int)] = mutable.ListBuffer.empty;
-  def create(grid: Grid): Seq[Int]
+  def create(grid: Grid): Unit
   def hive() : Beehive
+  def beeIds(): Seq[Int]
 }

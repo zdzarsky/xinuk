@@ -14,7 +14,7 @@ final case class Beehive(smell: SmellArray, position: (Int, Int), bees: Vector[B
 
 object Beehive {
 
-  def create(initialSignal: Signal, position: (Int, Int)): Beehive = new Beehive(
+  def create(initialSignal: Signal, position: (Int, Int), bees: Vector[Bee]): Beehive = new Beehive(
     Array.fill(Cell.Size, Cell.Size)(initialSignal), position
   )
 }

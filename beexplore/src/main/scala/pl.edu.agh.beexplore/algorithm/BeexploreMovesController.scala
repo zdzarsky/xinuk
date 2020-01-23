@@ -18,17 +18,18 @@ import scala.collection.immutable.TreeSet
 import scala.util.Random
 
 class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config: BeexploreConfig) extends MovesController {
-  val mapPath = ""
-  val world: HoneyWorld = if (mapPath.isEmpty) new IdealWorld() else new MapWorld()
+  val world: HoneyWorld = if (config.mapPath.isEmpty) new IdealWorld() else new MapWorld()
 
   private val beesPositions: MMap[Int, List[(Int, Int)]] = MMap.empty
   private val partialDistances: MMap[Int, Double] = MMap.empty
+
   private val perExperienceFlightDistance: MMap[Experience, List[Double]] = MMap(
     Novice -> List.empty,
     Intermediate -> List.empty,
     Experienced -> List.empty,
     Expert -> List.empty
   )
+
   private val perExperienceConvexHull: MMap[Experience, List[Double]] = MMap(
     Novice -> List.empty,
     Intermediate -> List.empty,
@@ -38,11 +39,10 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
 
   override def initialGrid: (Grid, Metrics) = {
     val grid = Grid.empty(bufferZone)
-    if (mapPath.isEmpty) {
-      world.create(grid).foreach { beeIndex =>
-        beesPositions(beeIndex) = List.empty
-        partialDistances(beeIndex) = 0
-      }
+    world.create(grid)
+    world.beeIds().foreach { beeIndex =>
+      beesPositions(beeIndex) = List.empty
+      partialDistances(beeIndex) = 0
     }
     (grid, BeexploreMetrics(0, 0))
   }
@@ -158,9 +158,9 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
         }
       case _ =>
     }
-    this.world.destroyedPatchesCoords.foreach( c =>
+    this.world.destroyedPatchesCoords.foreach(c =>
       newGrid.cells(c._1)(c._2) match {
-        case _ : Bee =>
+        case _: Bee =>
         case _ =>
           newGrid.cells(c._1)(c._2) = FlowerPatch.create(Signal(0.4))
           this.world.destroyedPatchesCoords -= c

@@ -1,9 +1,34 @@
 package pl.edu.agh.beexplore.utils
-import pl.edu.agh.beexplore.model.Beehive
+import org.slf4j.LoggerFactory
+import pl.edu.agh.beexplore.config.BeexploreConfig
+import pl.edu.agh.beexplore.model.Bee.Novice
+import pl.edu.agh.beexplore.model.{Bee, Beehive}
 import pl.edu.agh.xinuk.model.{Grid, Signal}
 
-class MapWorld extends HoneyWorld {
-  override def create(grid: Grid): Seq[Int] = {Seq.empty}
+import scala.util.{Failure, Success}
 
-  override def hive(): Beehive = null
+class MapWorld(implicit config: BeexploreConfig) extends HoneyWorld {
+
+  val logger = LoggerFactory.getLogger(getClass.toString)
+  var hive: Beehive = Beehive.create(Signal.Zero, (0, 0), Vector.empty)
+
+  override def create(grid: Grid): Unit = {
+    MapReader.read(config.mapPath, grid) match {
+      case Success(grid) =>
+        for{
+          x <- grid.cells.indices
+          y <- grid.cells.indices
+        }{
+          grid.cells(x)(y) match {
+            case Beehive(_, position, _) =>
+              hive = Beehive.create(Signal.Zero, position,
+              (0 to config.beesCount).map(id => Bee.create(id, config.beeSignalInitial).withExperience(Novice)).toVector)
+            case _ =>
+          }
+        }
+      case Failure(exception) => logger.error(s"Unable to read map, error message: ${exception.getMessage}")
+    }
+  }
+
+  override def beeIds(): Seq[Int] = (0 until config.beesCount)
 }
