@@ -209,7 +209,8 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
                   fw.write(perExperienceConvexHull(Experienced).mkString(","))
                   perExperienceConvexHull(Experienced) = List.empty
                   fw.write("\n")
-                } else if (newGrid.cells(world.hive().position._1)(world.hive().position._2).asInstanceOf[Beehive].bees.count(_.experience == Expert) == 3) {
+                } else if (perExperienceConvexHull(Expert).nonEmpty &&
+                  newGrid.cells(world.hive().position._1)(world.hive().position._2).asInstanceOf[Beehive].bees.length == 3) {
                   fw.write("Expert:\n")
                   fw.write(perExperienceConvexHull(Expert).mkString(","))
                   perExperienceConvexHull(Expert) = List.empty
@@ -234,7 +235,8 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
                   fw2.write(perExperienceFlightDistance(Experienced).mkString(","))
                   perExperienceFlightDistance(Experienced) = List.empty
                   fw2.write("\n")
-                } else if (newGrid.cells(world.hive().position._1)(world.hive().position._2).asInstanceOf[Beehive].bees.count(_.experience == Expert) == 3) {
+                } else if ( perExperienceFlightDistance(Expert).nonEmpty
+                  && newGrid.cells(world.hive().position._1)(world.hive().position._2).asInstanceOf[Beehive].bees.length == 3) {
                   fw2.write("Expert:\n")
                   fw2.write(perExperienceFlightDistance(Expert).mkString(","))
                   perExperienceFlightDistance(Expert) = List.empty
