@@ -1,9 +1,12 @@
 package pl.edu.agh.beexplore.algorithm
 
+import java.io.FileWriter
+
 import com.avsystem.commons.SharedExtensions._
 import com.avsystem.commons.collection.CollectionAliases.MMap
 import com.avsystem.commons.misc.Opt
 import pl.edu.agh.beexplore.config.BeexploreConfig
+import pl.edu.agh.beexplore.model
 import pl.edu.agh.beexplore.model.Bee._
 import pl.edu.agh.beexplore.model.accesibles.BeeAccessible
 import pl.edu.agh.beexplore.model.{Bee, Beehive, FlowerPatch}
@@ -67,14 +70,28 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
     } {
       applyBehavior(newGrid, grid, x, y)
     }
+    this.world.destroyedPatchesCoords.foreach { c =>
+      newGrid.cells(c._1)(c._2) match {
+        case _: Bee =>
+        case _ =>
+          newGrid.cells(c._1)(c._2) = FlowerPatch.create(Signal(0.4))
+          this.world.destroyedPatchesCoords -= c
+
+      }
+    }
     (newGrid, BeexploreMetrics(0, 0))
   }
 
   private def feedBeesAndReleaseScouts(grid: Grid, newGrid: Grid): Unit = {
     val hivePosition = world.hive().position
-    val (stillHungry, notHungry) = grid.cells(hivePosition._1)(hivePosition._2).asInstanceOf[Beehive].bees.partition(_.hunger >= 0)
-    newGrid.cells(hivePosition._1)(hivePosition._2) = world.hive().copy(bees = stillHungry.map(b => b.copy(hunger = b.hunger - 1)))
-    notHungry.foreach(bee => newGrid.cells(hivePosition._1 + 3)(hivePosition._2 + 3) = bee) // add here experience based release from hive
+    val (stillHungry, notHungry) = newGrid.cells(hivePosition._1)(hivePosition._2).asInstanceOf[Beehive].bees.partition(_.hunger >= 0)
+    newGrid.cells(hivePosition._1)(hivePosition._2) = newGrid.cells(hivePosition._1)(hivePosition._2).asInstanceOf[Beehive].copy(bees = stillHungry.map(b => b.copy(hunger = b.hunger - 1)))
+    notHungry.foreach { bee =>
+      newGrid.cells(hivePosition._1 + 3)(hivePosition._2 + 3) match {
+        case _: Bee =>
+        case _ => newGrid.cells(hivePosition._1 + 3)(hivePosition._2 + 3) = bee
+      }
+    } // add here experience based release from hive
   }
 
   implicit val ordering: Ordering[(Double, Int, Int, GridPart)] = (x: (Double, Int, Int, GridPart), y: (Double, Int, Int, GridPart)) => math.floor(math.signum(y._1 - x._1)).toInt
@@ -109,13 +126,17 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
   def selectDestinationCell(bee: Bee, possibleDestinations: Iterator[(Int, Int, GridPart)], newGrid: Grid): Opt[(Int, Int, GridPart)] = {
     val destinations = possibleDestinations.toList
     if (bee.hunger > config.beeHungerThreshold * (10 * getExperienceFactor(bee))) {
-      Opt(destinations.reduceLeft(
+      Opt(destinations.filter { case (p1, p2, _) => newGrid.cells(p1)(p2) match {
+        case Bee(_, _, _, _, _) => false
+        case _ => true
+      }
+      }.reduceLeft(
         (p1, p2) =>
           if (distanceFromHive(p1._1, p1._2) <= distanceFromHive(p2._1, p2._2)) p1 else p2))
     } else {
       destinations.map { case (i, j, current) => (i, j, current, newGrid.cells(i)(j)) }
         .collectFirstOpt {
-          case (i: Int, j: Int, currentCell, BeeAccessible(_)) =>
+          case (i: Int, j: Int, currentCell, newGridPart@BeeAccessible(_)) =>
             (i, j, currentCell)
         }
     }
@@ -156,11 +177,36 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
               grid.cells(x)(y) = EmptyCell(cell.smell)
               newGrid.cells(x)(y) = EmptyCell(cell.smell)
               val newBee = bee.copy(experience = calculateExperience(bee), numberOfFlights = bee.numberOfFlights + 1)
-              newGrid.cells(world.hive().position._1)(world.hive().position._2) = world.hive().copy(bees = newBee +: bees)
+              newGrid.cells(world.hive().position._1)(world.hive().position._2) = newGrid.cells(world.hive().position._1)(world.hive().position._2).asInstanceOf[model.Beehive].copy(bees = bees :+ newBee)
+              println(newGrid.cells(world.hive().position._1)(world.hive().position._2).asInstanceOf[model.Beehive].bees)
               perExperienceFlightDistance(bee.experience) +:= partialDistances(bee.id)
               partialDistances(bee.id) = 0
               val convexHull = calculateConvexHull(bee)
               perExperienceConvexHull(newBee.experience) +:= convexHull
+              val fw = new FileWriter("res_convex.csv", true)
+              try {
+                if (perExperienceConvexHull(Experienced).nonEmpty && newGrid.cells(world.hive().position._1)(world.hive().position._2).asInstanceOf[Beehive].bees.length == 3) {
+                  fw.write(perExperienceConvexHull(Novice).mkString(","))
+                }
+                else if (perExperienceConvexHull(Expert).nonEmpty && newGrid.cells(world.hive().position._1)(world.hive().position._2).asInstanceOf[Beehive].bees.length == 3) {
+                  fw.write(perExperienceConvexHull(Intermediate).mkString(","))
+                } else if (newGrid.cells(world.hive().position._1)(world.hive().position._2).asInstanceOf[Beehive].bees.count(_.experience == Expert) == 3) {
+                  fw.write(perExperienceConvexHull(Expert).mkString(","))
+                }
+              }
+              finally fw.close()
+              val fw2 = new FileWriter("res_distance.csv", true)
+              try {
+                if (perExperienceFlightDistance(Experienced).nonEmpty && newGrid.cells(world.hive().position._1)(world.hive().position._2).asInstanceOf[Beehive].bees.length == 3) {
+                  fw2.write(perExperienceFlightDistance(Novice).mkString(","))
+                }
+                else if (perExperienceFlightDistance(Expert).nonEmpty && newGrid.cells(world.hive().position._1)(world.hive().position._2).asInstanceOf[Beehive].bees.length == 3) {
+                  fw2.write(perExperienceFlightDistance(Intermediate).mkString(","))
+                } else if (newGrid.cells(world.hive().position._1)(world.hive().position._2).asInstanceOf[Beehive].bees.count(_.experience == Expert) == 3) {
+                  fw2.write(perExperienceFlightDistance(Expert).mkString(","))
+                }
+              }
+              finally fw.close()
               println(perExperienceConvexHull)
               println(perExperienceFlightDistance)
               beesPositions(bee.id) = List()
@@ -169,15 +215,6 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
         }
       case _ =>
     }
-    this.world.destroyedPatchesCoords.foreach(c =>
-      newGrid.cells(c._1)(c._2) match {
-        case _: Bee =>
-        case _ =>
-          newGrid.cells(c._1)(c._2) = FlowerPatch.create(Signal(0.4))
-          this.world.destroyedPatchesCoords -= c
-
-      }
-    )
   }
 
   def calculateExperience(bee: Bee): Experience = if (bee.numberOfFlights == 0) Novice
