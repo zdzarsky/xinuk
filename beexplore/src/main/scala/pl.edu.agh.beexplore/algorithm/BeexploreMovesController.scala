@@ -85,10 +85,16 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
   private def feedBeesAndReleaseScouts(grid: Grid, newGrid: Grid): Unit = {
     val hivePosition = world.hive().position
     val (stillHungry, notHungry) = newGrid.cells(hivePosition._1)(hivePosition._2).asInstanceOf[Beehive].bees.partition(_.hunger >= 0)
+    println("STILL HUNGRY")
+    println(stillHungry)
+    println("NOT HUNGRY")
+    println(notHungry)
     newGrid.cells(hivePosition._1)(hivePosition._2) = newGrid.cells(hivePosition._1)(hivePosition._2).asInstanceOf[Beehive].copy(bees = stillHungry.map(b => b.copy(hunger = b.hunger - 1)))
     notHungry.foreach { bee =>
       newGrid.cells(hivePosition._1 + 3)(hivePosition._2 + 3) match {
         case _: Bee =>
+        val beehive = newGrid.cells(hivePosition._1)(hivePosition._2).asInstanceOf[Beehive]
+          newGrid.cells(hivePosition._1)(hivePosition._2) = beehive.copy(bees = beehive.bees :+ bee)
         case _ => newGrid.cells(hivePosition._1 + 3)(hivePosition._2 + 3) = bee
       }
     } // add here experience based release from hive
