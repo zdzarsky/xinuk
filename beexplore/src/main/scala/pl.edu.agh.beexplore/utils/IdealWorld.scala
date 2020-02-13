@@ -28,8 +28,8 @@ class IdealWorld(implicit config: BeexploreConfig) extends HoneyWorld {
   }
 
   private def spawnBee(grid: Grid, config: BeexploreConfig): Unit = {
-    val positions = Seq((6, 6), (4, 4), (3, 3))
-    (0 to 2).foreach { beeId =>
+    val positions = (0 to 11).filter(_ != 5).zipWithIndex
+    (0 to 10).foreach { beeId =>
       val (x, y) = positions(beeId)
       grid.cells(x)(y) = Bee.create(beeId, config.beeSignalInitial)
     }
@@ -39,5 +39,5 @@ class IdealWorld(implicit config: BeexploreConfig) extends HoneyWorld {
     grid.cells(config.beehiveX)(config.beehiveY) = hive
   }
 
-  override def beeIds(): Seq[Int] = (0 to 2)
+  override def beeIds(): Seq[Int] = (0 to 10)
 }
