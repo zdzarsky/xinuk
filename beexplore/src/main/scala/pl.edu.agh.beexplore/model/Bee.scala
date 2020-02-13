@@ -1,6 +1,6 @@
 package pl.edu.agh.beexplore.model
 
-import pl.edu.agh.beexplore.model.Bee.Experience
+import pl.edu.agh.beexplore.model.Bee.{Experience, Novice}
 import pl.edu.agh.xinuk.model.Cell.SmellArray
 import pl.edu.agh.xinuk.model.{Cell, Signal, SmellingCell}
 
@@ -8,7 +8,7 @@ final case class Bee(
                       id: Int,
                       smell: SmellArray,
                       numberOfFlights: Int,
-                      experience: Experience,
+                      experience: Experience = Novice,
                       hunger: Int,
                     ) extends SmellingCell {
   override type Self = Bee
