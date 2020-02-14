@@ -7,7 +7,7 @@ import pl.edu.agh.xinuk.model.{Grid, Signal}
 class IdealWorld(implicit config: BeexploreConfig) extends HoneyWorld {
 
   private val hivePosition: (Int, Int) = (config.beehiveX, config.beehiveY)
-  val hive: Beehive = Beehive.create(Signal.Zero, hivePosition, Vector.empty)
+  var hive: Beehive = Beehive.create(Signal.Zero, hivePosition, Vector.empty)
 
   override def create(grid: Grid): Unit = {
     createBeehive(grid, config)
@@ -40,4 +40,6 @@ class IdealWorld(implicit config: BeexploreConfig) extends HoneyWorld {
   }
 
   override def beeIds(): Seq[Int] = (0 to 2)
+
+  override def updateHive(hive: Beehive): Unit = this.hive = hive
 }

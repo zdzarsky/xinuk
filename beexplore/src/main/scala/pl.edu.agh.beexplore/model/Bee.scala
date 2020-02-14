@@ -17,6 +17,8 @@ final case class Bee(
 
   def withExperience(experience: Experience): Bee = copy(experience = experience)
 
+  def withHunger(hunger: Int): Bee = copy(hunger = hunger)
+
 }
 
 object Bee {

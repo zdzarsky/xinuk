@@ -84,17 +84,19 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
 
   private def feedBeesAndReleaseScouts(grid: Grid, newGrid: Grid): Unit = {
     val hivePosition = world.hive().position
-    val (stillHungry, notHungry) = newGrid.cells(hivePosition._1)(hivePosition._2).asInstanceOf[Beehive].bees.partition(_.hunger >= 0)
-
-    newGrid.cells(hivePosition._1)(hivePosition._2) = newGrid.cells(hivePosition._1)(hivePosition._2).asInstanceOf[Beehive].copy(bees = stillHungry.map(b => b.copy(hunger = b.hunger - 1)))
+    val (stillHungry, notHungry) = world.hive().bees.partition(_.hunger > 0)
+    println(stillHungry, notHungry)
+    val newHive = world.hive().copy(bees = stillHungry.map(b => b.copy(hunger = b.hunger - 1)))
+    newGrid.cells(hivePosition._1)(hivePosition._2) = newHive
     notHungry.foreach { bee =>
       newGrid.cells(hivePosition._1 + 3)(hivePosition._2 + 3) match {
         case _: Bee =>
-          val beehive = newGrid.cells(hivePosition._1)(hivePosition._2).asInstanceOf[Beehive]
-          newGrid.cells(hivePosition._1)(hivePosition._2) = beehive.copy(bees = beehive.bees :+ bee)
+          newGrid.cells(hivePosition._1)(hivePosition._2) = world.hive().copy(bees = world.hive().bees :+ bee)
         case _ => newGrid.cells(hivePosition._1 + 3)(hivePosition._2 + 3) = bee
       }
-    } // add here experience based release from hive
+    }
+    world.updateHive(newHive)
+    // add here experience based release from hive
   }
 
   implicit val ordering: Ordering[(Double, Int, Int, GridPart)] = (x: (Double, Int, Int, GridPart), y: (Double, Int, Int, GridPart)) => math.floor(math.signum(y._1 - x._1)).toInt
@@ -180,8 +182,9 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
               grid.cells(x)(y) = EmptyCell(cell.smell)
               newGrid.cells(x)(y) = EmptyCell(cell.smell)
               val newBee = bee.copy(experience = calculateExperience(bee), numberOfFlights = bee.numberOfFlights + 1)
-              newGrid.cells(world.hive().position._1)(world.hive().position._2) = newGrid.cells(world.hive().position._1)(world.hive().position._2).asInstanceOf[model.Beehive].copy(bees = bees :+ newBee)
-              println(newGrid.cells(world.hive().position._1)(world.hive().position._2).asInstanceOf[model.Beehive].bees)
+              val newHive = newGrid.cells(world.hive().position._1)(world.hive().position._2).asInstanceOf[model.Beehive].copy(bees = bees :+ newBee)
+              newGrid.cells(world.hive().position._1)(world.hive().position._2) = newHive
+              world.updateHive(newHive)
               perExperienceFlightDistance(bee.experience) +:= partialDistances(bee.id)
               partialDistances(bee.id) = 0
               val convexHull = calculateConvexHull(bee)

@@ -10,7 +10,7 @@ import scala.util.{Failure, Success}
 class MapWorld(implicit config: BeexploreConfig) extends HoneyWorld {
 
   val logger = LoggerFactory.getLogger(getClass.toString)
-  var hive: Beehive = Beehive.create(Signal.Zero, (0, 0), Vector.empty)
+  var hiveInstance: Beehive = Beehive.create(Signal.Zero, (0, 0), Vector.empty)
 
   override def create(grid: Grid): Unit = {
     MapReader.read(config.mapPath, grid) match {
@@ -21,14 +21,18 @@ class MapWorld(implicit config: BeexploreConfig) extends HoneyWorld {
         }{
           grid.cells(x)(y) match {
             case Beehive(_, position, _) =>
-              hive = Beehive.create(Signal.Zero, position,
-              (0 to config.beesCount).map(id => Bee.create(id, config.beeSignalInitial).withExperience(Novice)).toVector)
+              hiveInstance = Beehive.create(Signal.Zero, position, (0 until config.beesCount)
+                .map(id => Bee.create(id, config.beeSignalInitial).withExperience(Novice).withHunger(id)).toVector)
             case _ =>
           }
         }
       case Failure(exception) => logger.error(s"Unable to read map, error message: ${exception.getMessage}")
     }
   }
+
+  override def hive(): Beehive = hiveInstance
+
+  override def updateHive(hive: Beehive): Unit = hiveInstance = hive
 
   override def beeIds(): Seq[Int] = (0 until config.beesCount)
 }
