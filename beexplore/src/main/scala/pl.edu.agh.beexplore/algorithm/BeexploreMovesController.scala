@@ -85,18 +85,17 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
   private def feedBeesAndReleaseScouts(grid: Grid, newGrid: Grid): Unit = {
     val hivePosition = world.hive().position
     val (stillHungry, notHungry) = world.hive().bees.partition(_.hunger > 0)
-    println(stillHungry, notHungry)
-    val newHive = world.hive().copy(bees = stillHungry.map(b => b.copy(hunger = b.hunger - 1)))
+    var newHive = world.hive().copy(bees = stillHungry.map(b => b.copy(hunger = b.hunger - 1)))
     newGrid.cells(hivePosition._1)(hivePosition._2) = newHive
     notHungry.foreach { bee =>
       newGrid.cells(hivePosition._1 + 3)(hivePosition._2 + 3) match {
         case _: Bee =>
           newGrid.cells(hivePosition._1)(hivePosition._2) = world.hive().copy(bees = world.hive().bees :+ bee)
+          newHive = newHive.copy(bees = world.hive().bees)
         case _ => newGrid.cells(hivePosition._1 + 3)(hivePosition._2 + 3) = bee
       }
     }
     world.updateHive(newHive)
-    // add here experience based release from hive
   }
 
   implicit val ordering: Ordering[(Double, Int, Int, GridPart)] = (x: (Double, Int, Int, GridPart), y: (Double, Int, Int, GridPart)) => math.floor(math.signum(y._1 - x._1)).toInt
@@ -148,7 +147,7 @@ class BeexploreMovesController(bufferZone: TreeSet[(Int, Int)])(implicit config:
   }
 
   private def distanceFromHive(x1: Int, y1: Int) = {
-    Math.abs(x1 - world.hive().position._1) + Math.abs(y1 - world.hive().position._1)
+    Math.abs(x1 - world.hive().position._1) + Math.abs(y1 - world.hive().position._2)
   }
 
   private def calculateDistance(first: (Int, Int), second: (Int, Int)): Double = {
